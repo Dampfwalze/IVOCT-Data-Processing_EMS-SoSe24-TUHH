@@ -1,5 +1,7 @@
 pub mod nodes;
 
+use std::path::PathBuf;
+
 use crate::{node_graph::NodeId, pipeline::Pipeline};
 
 use super::node_graph::{DynEditNode, EditNodeGraph};
@@ -27,8 +29,12 @@ impl EditNodeGraph for Pipeline {
         let id = id + 1;
 
         let node: Box<dyn DynEditNode> = match path {
-            "Input/Binary input" => Box::new(_nodes::BinaryInputNode::default()),
-            "Process/Process raw M scan" => Box::new(_nodes::ProcessRawMScanNode::default()),
+            "Input/Raw M Scan Input" => Box::new(_nodes::BinaryInputNode::default()),
+            "Input/Binary Vector Input" => Box::new(_nodes::BinaryInputNode::new(
+                PathBuf::new(),
+                _nodes::BinaryInputType::DataVector,
+            )),
+            "Process/Process Raw M Scan" => Box::new(_nodes::ProcessRawMScanNode::default()),
             _ => panic!("Invalid path: {}", path),
         };
 
@@ -38,6 +44,10 @@ impl EditNodeGraph for Pipeline {
     }
 
     fn addable_nodes(&self) -> Vec<&'static str> {
-        vec!["Input/Binary input", "Process/Process raw M scan"]
+        vec![
+            "Input/Raw M Scan Input",
+            "Input/Binary Vector Input",
+            "Process/Process Raw M Scan",
+        ]
     }
 }

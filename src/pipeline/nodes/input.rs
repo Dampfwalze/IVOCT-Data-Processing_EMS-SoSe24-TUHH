@@ -17,6 +17,12 @@ pub struct BinaryInputNode {
     pub data_type: BinaryInputType,
 }
 
+impl BinaryInputNode {
+    pub fn new(path: PathBuf, data_type: BinaryInputType) -> Self {
+        Self { path, data_type }
+    }
+}
+
 impl Default for BinaryInputNode {
     fn default() -> Self {
         Self {

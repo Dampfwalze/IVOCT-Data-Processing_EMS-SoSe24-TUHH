@@ -3,7 +3,7 @@ use std::{borrow::Cow, mem, path::PathBuf};
 use egui::{
     text::{CCursor, CCursorRange},
     text_selection::text_cursor_state::byte_index_from_char_index,
-    Response, TextBuffer, TextEdit, Widget,
+    vec2, Response, TextBuffer, TextEdit, Widget,
 };
 use native_dialog::FileDialog;
 
@@ -19,9 +19,8 @@ impl<'a> PathInput<'a> {
 
 impl<'a> Widget for PathInput<'a> {
     fn ui(self, ui: &mut egui::Ui) -> Response {
-        let id = ui.id();
         ui.horizontal(|ui| {
-            ui.push_id(id, |ui| {
+            ui.allocate_ui(vec2(ui.available_width() - 25.0, 18.0), |ui| {
                 let mut output = TextEdit::singleline(&mut PathWrapper(self.path))
                     .hint_text("Path")
                     .show(ui);
@@ -34,17 +33,17 @@ impl<'a> Widget for PathInput<'a> {
 
                     output.state.store(ui.ctx(), output.response.id);
                 }
-
-                if ui.button("...").clicked() {
-                    match FileDialog::new().show_open_single_file() {
-                        Ok(Some(path)) => {
-                            *self.path = path;
-                        }
-                        Ok(None) => {}
-                        Err(e) => eprintln!("Error getting file from dialog: {}", e),
-                    }
-                }
             });
+
+            if ui.button("...").clicked() {
+                match FileDialog::new().show_open_single_file() {
+                    Ok(Some(path)) => {
+                        *self.path = path;
+                    }
+                    Ok(None) => {}
+                    Err(e) => eprintln!("Error getting file from dialog: {}", e),
+                }
+            }
         })
         .response
     }

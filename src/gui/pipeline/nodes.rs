@@ -61,10 +61,14 @@ impl EditNode for nodes::BinaryInputNode {
     }
 
     fn ui(&mut self, ui: &mut crate::gui::node_graph::NodeUi) {
-        // let transform = ui
-        //     .ctx()
-        //     .memory_mut(|mem| mem.layer_transforms.get(&ui.layer_id()).copied())
-        //     .unwrap_or(TSTransform::IDENTITY);
+        ui.output(
+            self.data_type,
+            self.data_type.data_type(),
+            self.data_type.data_type().color(),
+            |ui| {
+                ui.node_label(format!("{}", self.data_type));
+            },
+        );
 
         NodeComboBox::from_id_source(ui.id().with("data_type"))
             .selected_text(format!("{}", self.data_type))
@@ -74,17 +78,7 @@ impl EditNode for nodes::BinaryInputNode {
                 }
             });
 
-        // Path
         ui.add(PathInput::new(&mut self.path));
-
-        ui.output(
-            self.data_type,
-            self.data_type.data_type(),
-            self.data_type.data_type().color(),
-            |ui| {
-                ui.node_label(format!("{}", self.data_type));
-            },
-        );
     }
 }
 

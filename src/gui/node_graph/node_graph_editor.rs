@@ -38,7 +38,7 @@ impl<'a> NodeGraphEditor<'a> {
     }
 
     fn sense_pin_drag(ui: &mut egui::Ui, pos: Pos2, to_left: bool) -> Response {
-        let mut rect = Rect::from_center_size(pos, Vec2::splat(12.0));
+        let mut rect = Rect::from_center_size(pos, Vec2::splat(18.0));
         match to_left {
             true => rect.min.x -= 8.0,
             false => rect.max.x += 8.0,
@@ -125,7 +125,7 @@ impl<'a> NodeGraphEditor<'a> {
                 // Node should get focus
                 if !anything_focused
                     && response.is_pointer_button_down_on()
-                    && ui.input(|i| i.pointer.primary_pressed() || i.pointer.secondary_pressed())
+                    && ui.input(|i| i.pointer.primary_pressed())
                 {
                     to_top = Some(*node_id);
                     selected = Some(*node_id);
@@ -134,8 +134,6 @@ impl<'a> NodeGraphEditor<'a> {
                 for input in inputs.iter() {
                     let response = Self::sense_pin_drag(ui, input.pos, true);
 
-                    let mut color = input.color;
-
                     if response.dragged() {
                         response.dnd_set_drag_payload(DragPayload(
                             input.pos,
@@ -143,9 +141,6 @@ impl<'a> NodeGraphEditor<'a> {
                             PayloadPin::Input(input.id),
                         ));
                     } else {
-                        if response.hovered() {
-                            color = Color32::WHITE;
-                        }
                         if let Some(payload) = response.dnd_hover_payload() {
                             if let DragPayload(_, _, PayloadPin::Output(_, _)) = *payload {
                                 pending_connection_end = Some(input.pos);
@@ -167,13 +162,14 @@ impl<'a> NodeGraphEditor<'a> {
                         connections.push((input.pos, connection));
                     }
 
-                    ui.painter().circle_filled(input.pos, 3.0, color);
+                    ui.painter().circle_filled(input.pos, 3.0, input.color);
+if response.hovered() {
+                        ui.painter().circle_filled(input.pos, 2.0, Color32::WHITE);
+                    }
                 }
 
                 for output in outputs.iter() {
                     let response = Self::sense_pin_drag(ui, output.pos, false);
-
-                    let mut color = output.color;
 
                     if response.dragged() {
                         response.dnd_set_drag_payload(DragPayload(
@@ -182,10 +178,7 @@ impl<'a> NodeGraphEditor<'a> {
                             PayloadPin::Output(output.id, output.type_),
                         ));
                     } else {
-                        if response.hovered() {
-                            color = Color32::WHITE;
-                        }
-                        if let Some(payload) = response.dnd_hover_payload() {
+                                                if let Some(payload) = response.dnd_hover_payload() {
                             if let DragPayload(_, _, PayloadPin::Input(_)) = *payload {
                                 pending_connection_end = Some(output.pos);
                             }
@@ -210,7 +203,10 @@ impl<'a> NodeGraphEditor<'a> {
                         output.pos,
                     );
 
-                    ui.painter().circle_filled(output.pos, 3.0, color);
+                    ui.painter().circle_filled(output.pos, 3.0, output.color);
+if response.hovered() {
+                        ui.painter().circle_filled(output.pos, 2.0, Color32::WHITE);
+                    }
                 }
             }
 
@@ -296,7 +292,7 @@ impl<'a> NodeGraphEditor<'a> {
 
         // User clicked on background
         if response.is_pointer_button_down_on()
-            && ui.input(|mem| mem.pointer.primary_pressed() || mem.pointer.secondary_pressed())
+            && ui.input(|mem| mem.pointer.primary_pressed())
             && !anything_focused
         {
             selected = None;
