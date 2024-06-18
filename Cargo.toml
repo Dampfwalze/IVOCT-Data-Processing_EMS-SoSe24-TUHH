@@ -1,0 +1,10 @@
+[package]
+name = "test_gui_rust_2"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+eframe = { version = "0.27.2", features = ["wgpu"] }
+egui = "0.27.2"
+egui_dock = "0.12.0"
+native-dialog = "0.7.0"
