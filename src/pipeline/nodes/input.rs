@@ -5,21 +5,35 @@ use crate::{
     pipeline::PipelineDataType,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryInputType {
+    #[default]
     RawMScan,
     DataVector,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BinaryInputNode {
     pub path: PathBuf,
     pub data_type: BinaryInputType,
+    pub a_scan_length: usize,
 }
 
 impl BinaryInputNode {
-    pub fn new(path: PathBuf, data_type: BinaryInputType) -> Self {
-        Self { path, data_type }
+    pub fn m_scan(path: PathBuf, a_scan_length: Option<usize>) -> Self {
+        Self {
+            path,
+            data_type: BinaryInputType::RawMScan,
+            a_scan_length: a_scan_length.unwrap_or(1024),
+        }
+    }
+
+    pub fn data_vector(path: PathBuf) -> Self {
+        Self {
+            path,
+            data_type: BinaryInputType::DataVector,
+            a_scan_length: 1024,
+        }
     }
 }
 
@@ -28,6 +42,7 @@ impl Default for BinaryInputNode {
         Self {
             path: PathBuf::new(),
             data_type: BinaryInputType::RawMScan,
+            a_scan_length: 1024,
         }
     }
 }

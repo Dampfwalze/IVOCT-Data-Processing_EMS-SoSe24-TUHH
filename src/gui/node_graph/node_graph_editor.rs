@@ -46,7 +46,16 @@ impl<'a> NodeGraphEditor<'a> {
         ui.allocate_rect(rect, Sense::click_and_drag())
     }
 
+    #[allow(non_upper_case_globals)]
     pub fn show(&mut self, ui: &mut egui::Ui) {
+        const line_with: f32 = 2.0;
+        const pin_hover_point_radius: f32 = 2.0;
+        const pin_radius: f32 = 4.0;
+        const pin_stroke: Stroke = Stroke {
+            width: 0.8,
+            color: Color32::BLACK,
+        };
+
         let selected_id = ui.id().with("selected");
         let mut selected: Option<NodeId> = ui.data(|d| d.get_temp(selected_id)).unwrap_or_default();
 
@@ -162,9 +171,14 @@ impl<'a> NodeGraphEditor<'a> {
                         connections.push((input.pos, connection));
                     }
 
-                    ui.painter().circle_filled(input.pos, 3.0, input.color);
-if response.hovered() {
-                        ui.painter().circle_filled(input.pos, 2.0, Color32::WHITE);
+                    ui.painter()
+                        .circle(input.pos, pin_radius, input.color, pin_stroke);
+                    if response.hovered() {
+                        ui.painter().circle_filled(
+                            input.pos,
+                            pin_hover_point_radius,
+                            Color32::WHITE,
+                        );
                     }
                 }
 
@@ -178,7 +192,7 @@ if response.hovered() {
                             PayloadPin::Output(output.id, output.type_),
                         ));
                     } else {
-                                                if let Some(payload) = response.dnd_hover_payload() {
+                        if let Some(payload) = response.dnd_hover_payload() {
                             if let DragPayload(_, _, PayloadPin::Input(_)) = *payload {
                                 pending_connection_end = Some(output.pos);
                             }
@@ -203,9 +217,14 @@ if response.hovered() {
                         output.pos,
                     );
 
-                    ui.painter().circle_filled(output.pos, 3.0, output.color);
-if response.hovered() {
-                        ui.painter().circle_filled(output.pos, 2.0, Color32::WHITE);
+                    ui.painter()
+                        .circle(output.pos, pin_radius, output.color, pin_stroke);
+                    if response.hovered() {
+                        ui.painter().circle_filled(
+                            output.pos,
+                            pin_hover_point_radius,
+                            Color32::WHITE,
+                        );
                     }
                 }
             }
@@ -233,9 +252,11 @@ if response.hovered() {
 
                 if let Some(end_pos) = end_pos {
                     ui.painter()
-                        .line_segment([start_pos, end_pos], Stroke::new(1.0, Color32::WHITE));
-                    ui.painter().circle_filled(start_pos, 2.0, Color32::WHITE);
-                    ui.painter().circle_filled(end_pos, 2.0, Color32::WHITE);
+                        .line_segment([start_pos, end_pos], Stroke::new(line_with, Color32::WHITE));
+                    ui.painter()
+                        .circle_filled(start_pos, pin_hover_point_radius, Color32::WHITE);
+                    ui.painter()
+                        .circle_filled(end_pos, pin_hover_point_radius, Color32::WHITE);
                 }
             }
 
@@ -247,7 +268,7 @@ if response.hovered() {
                         .get(output)
                         .map(|output_pos| Shape::LineSegment {
                             points: [*input_pos, *output_pos],
-                            stroke: Stroke::new(1.0, Color32::WHITE),
+                            stroke: Stroke::new(line_with, Color32::WHITE),
                         })
                 })
                 .collect();

@@ -33,7 +33,7 @@ impl NodeOutput {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct NodeInput<T> {
     value: T,
     connection: Option<NodeOutput>,

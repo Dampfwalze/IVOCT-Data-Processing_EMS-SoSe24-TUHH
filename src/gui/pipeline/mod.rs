@@ -13,7 +13,7 @@ impl EditNodeGraph for Pipeline {
         self.nodes.keys().copied().collect()
     }
 
-    fn get_node_mut(&mut self, node_id: NodeId) -> Option<&mut (dyn DynEditNode)> {
+    fn get_node_mut(&mut self, node_id: NodeId) -> Option<&mut dyn DynEditNode> {
         match self.nodes.get_mut(&node_id) {
             Some(node) => Some(node.as_mut()),
             None => None,
@@ -29,11 +29,12 @@ impl EditNodeGraph for Pipeline {
         let id = id + 1;
 
         let node: Box<dyn DynEditNode> = match path {
-            "Input/Raw M Scan Input" => Box::new(_nodes::BinaryInputNode::default()),
-            "Input/Binary Vector Input" => Box::new(_nodes::BinaryInputNode::new(
-                PathBuf::new(),
-                _nodes::BinaryInputType::DataVector,
-            )),
+            "Input/Raw M Scan Input" => {
+                Box::new(_nodes::BinaryInputNode::m_scan(PathBuf::new(), None))
+            }
+            "Input/Binary Vector Input" => {
+                Box::new(_nodes::BinaryInputNode::data_vector(PathBuf::new()))
+            }
             "Process/Process Raw M Scan" => Box::new(_nodes::ProcessRawMScanNode::default()),
             _ => panic!("Invalid path: {}", path),
         };

@@ -6,7 +6,7 @@ pub enum ProcessRawMScanInputId {
     Chirp,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ProcessRawMScanNode {
     pub raw_scan: NodeInput<()>,
     pub offset: NodeInput<()>,

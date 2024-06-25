@@ -1,7 +1,7 @@
 use core::fmt;
 use std::fmt::{Display, Formatter};
 
-use egui::Color32;
+use egui::{Color32, DragValue};
 
 use crate::{
     gui::{
@@ -79,6 +79,15 @@ impl EditNode for nodes::BinaryInputNode {
             });
 
         ui.add(PathInput::new(&mut self.path));
+
+        if let BinaryInputType::RawMScan = self.data_type {
+            ui.add(
+                DragValue::new(&mut self.a_scan_length)
+                    .speed(1)
+                    .prefix("A Scan Length: ")
+                    .clamp_range(1..=usize::MAX),
+            );
+        }
     }
 }
 
