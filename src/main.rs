@@ -5,7 +5,8 @@ mod pipeline;
 
 use app::*;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     eframe::run_native(
         "IVOCT Test App",
         eframe::NativeOptions {

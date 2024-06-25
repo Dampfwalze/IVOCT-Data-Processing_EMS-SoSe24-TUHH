@@ -2,7 +2,10 @@ pub mod nodes;
 
 use std::path::PathBuf;
 
-use crate::{node_graph::NodeId, pipeline::Pipeline};
+use crate::{
+    node_graph::NodeId,
+    pipeline::{nodes::DynPipelineNode, Pipeline},
+};
 
 use super::node_graph::{DynEditNode, EditNodeGraph};
 
@@ -15,7 +18,7 @@ impl EditNodeGraph for Pipeline {
 
     fn get_node_mut(&mut self, node_id: NodeId) -> Option<&mut dyn DynEditNode> {
         match self.nodes.get_mut(&node_id) {
-            Some(node) => Some(node.as_mut()),
+            Some(node) => Some(node.as_edit_node_mut()),
             None => None,
         }
     }
@@ -28,7 +31,7 @@ impl EditNodeGraph for Pipeline {
         let id: usize = self.nodes.keys().copied().max().unwrap_or(0.into()).into();
         let id = id + 1;
 
-        let node: Box<dyn DynEditNode> = match path {
+        let node: Box<dyn DynPipelineNode> = match path {
             "Input/Raw M Scan Input" => {
                 Box::new(_nodes::BinaryInputNode::m_scan(PathBuf::new(), None))
             }
