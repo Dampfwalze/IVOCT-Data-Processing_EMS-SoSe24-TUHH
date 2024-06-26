@@ -77,6 +77,7 @@ impl NodeTaskRunner {
                 sync_rx,
                 input_connections: Vec::new(),
                 output_invalidator: invalidator,
+                error_on_last_run: false,
             }
             .run(),
         );
@@ -198,6 +199,7 @@ struct RunningNodeTask {
     sync_rx: watch::Receiver<Box<dyn DynPipelineNode>>,
     input_connections: Vec<(InputId, InvalidationNotifier)>,
     output_invalidator: Vec<Invalidator>,
+    error_on_last_run: bool,
 }
 
 impl RunningNodeTask {
@@ -230,14 +232,21 @@ impl RunningNodeTask {
                 _ = Self::on_invalidation(&mut self.input_connections) => {
                     self.invalidate();
                 }
-                _ = Self::run_task(self.node_task.as_mut()) => {
+                is_error = Self::run_task(self.error_on_last_run, self.node_task.as_mut()) => {
+                    self.error_on_last_run = is_error;
                 }
             }
         }
     }
 
-    async fn run_task(task: &mut dyn DynNodeTask) {
+    async fn run_task(error_on_last_run: bool, task: &mut dyn DynNodeTask) -> bool {
+        if error_on_last_run {
+            let () = futures::future::pending().await;
+        }
+
         let result = panic::AssertUnwindSafe(task.run()).catch_unwind().await;
+
+        let is_error = !matches!(result, Ok(Ok(_)));
 
         match result {
             Ok(Ok(_)) => {}
@@ -253,6 +262,8 @@ impl RunningNodeTask {
                 }
             ),
         }
+
+        is_error
     }
 
     fn invalidate(&mut self) {
@@ -261,6 +272,8 @@ impl RunningNodeTask {
             .for_each(Invalidator::invalidate);
 
         self.node_task.invalidate();
+
+        self.error_on_last_run = false;
     }
 
     async fn on_invalidation(notifiers: &mut Vec<(InputId, InvalidationNotifier)>) {
