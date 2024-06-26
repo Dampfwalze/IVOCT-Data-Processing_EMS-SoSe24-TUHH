@@ -112,8 +112,8 @@ impl<Req: Request> TaskOutput<Req> {
     /// Skip requests that have already a valid response. (Multiple senders may
     /// send the same request. Should respond only once.)
     pub async fn receive(&mut self) -> Req {
-        if let Some(req) = self.working_on.take() {
-            req
+        if let Some(ref req) = self.working_on {
+            req.clone()
         } else {
             let req = loop {
                 let req = self.request_rx.recv().await.expect("Should never close");
