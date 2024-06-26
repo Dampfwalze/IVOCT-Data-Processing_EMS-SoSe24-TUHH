@@ -4,12 +4,10 @@ use std::path::PathBuf;
 
 use crate::{
     node_graph::NodeId,
-    pipeline::{nodes::DynPipelineNode, Pipeline},
+    pipeline::{nodes::*, Pipeline},
 };
 
 use super::node_graph::{DynEditNode, EditNodeGraph};
-
-use crate::pipeline::nodes as _nodes;
 
 impl EditNodeGraph for Pipeline {
     fn get_node_ids(&self) -> Vec<NodeId> {
@@ -32,13 +30,11 @@ impl EditNodeGraph for Pipeline {
         let id = id + 1;
 
         let node: Box<dyn DynPipelineNode> = match path {
-            "Input/Raw M Scan Input" => {
-                Box::new(_nodes::BinaryInputNode::m_scan(PathBuf::new(), None))
-            }
+            "Input/Raw M Scan Input" => Box::new(binary_input::Node::m_scan(PathBuf::new(), None)),
             "Input/Binary Vector Input" => {
-                Box::new(_nodes::BinaryInputNode::data_vector(PathBuf::new()))
+                Box::new(binary_input::Node::data_vector(PathBuf::new()))
             }
-            "Process/Process Raw M Scan" => Box::new(_nodes::ProcessRawMScanNode::default()),
+            "Process/Process Raw M Scan" => Box::new(process_raw_m_scan::Node::default()),
             _ => panic!("Invalid path: {}", path),
         };
 

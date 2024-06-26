@@ -1,8 +1,5 @@
-mod input;
-mod raw_processing;
-
-pub use input::*;
-pub use raw_processing::*;
+pub mod binary_input;
+pub mod process_raw_m_scan;
 
 use core::fmt;
 use std::any;
@@ -17,6 +14,26 @@ use crate::{
 use super::execution::{
     ConnectionHandle, DynNodeTask, Invalidator, NodeTaskBuilder, NodeTaskBuilderImpl,
 };
+
+/// Important types and traits for pipeline nodes.
+#[allow(unused_imports)]
+mod prelude {
+    pub(crate) use crate::pipeline::{
+            execution::{ConnectionHandle, NodeTask, NodeTaskBuilder, TaskInput, TaskOutput},
+            requests, PipelineDataType,
+    };
+
+    pub(crate) use super::PipelineNode;
+
+    pub(crate) use graph::*;
+
+    pub(crate) mod graph {
+        pub(crate) use crate::node_graph::{
+            impl_enum_from_into_id_types, InputId, InputIdNone, InputIdSingle, NodeId, NodeInput,
+            NodeOutput, OutputId, OutputIdNone, OutputIdSingle, TypeId,
+        };
+    }
+}
 
 pub trait PipelineNode: fmt::Debug
     + EditNode<InputId = <Self as PipelineNode>::InputId, OutputId = <Self as PipelineNode>::OutputId>
