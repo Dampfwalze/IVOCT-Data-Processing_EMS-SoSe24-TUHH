@@ -1,6 +1,7 @@
 pub mod execution;
 pub mod nodes;
 pub mod requests;
+pub mod types;
 
 pub use execution::PipelineExecutor;
 use nodes::DynPipelineNode;

@@ -1,3 +1,7 @@
+use std::io::{stdout, Write};
+
+use crate::queue_channel::error::RecvError;
+
 use super::prelude::*;
 
 pub enum InputId {
@@ -85,16 +89,43 @@ impl NodeTask for Task {
     }
 
     async fn run(&mut self) -> anyhow::Result<()> {
-        let raw_scan = self.raw_scan_in.request(requests::RawMScan);
-        let offset = self.offset_in.request(requests::VectorData);
-        let chirp = self.chirp_in.request(requests::VectorData);
+        println!("Requesting RawMScan");
+        let raw_scan = self.raw_scan_in.request(requests::RawMScan).await;
+        println!("Got RawMScan");
 
-        let (raw_scan, offset, chirp) = tokio::join!(raw_scan, offset, chirp);
+        if let Some(mut raw_scan) = raw_scan.map(|r| r.subscribe()).flatten() {
+            let offset = self.offset_in.request(requests::VectorData);
+            let chirp = self.chirp_in.request(requests::VectorData);
 
-        if let Some(raw_scan) = raw_scan {
+            let (offset, chirp) = tokio::join!(offset, chirp);
+
+            print!("Processing RawMScan: {{ ");
+            stdout().flush().unwrap();
+
+            let mut count = 0;
+            let mut cols = 0;
+
+            loop {
+                match raw_scan.recv().await {
+                    Ok(item) => {
+                        count += 1;
+                        cols += item.ncols();
+                        if cols % 10000 == 0 {
+                            print!(".");
+                            stdout().flush().unwrap();
+                        }
+                    }
+                    Err(RecvError::Lagged) => return Ok(()),
+                    Err(RecvError::Closed) => break,
+                }
+            }
+
             let result = format!(
-                "Processed RawMScan: {{ {} }}, Offset: {{ {:?} }}, Chirp: {{ {:?} }}",
-                raw_scan, offset, chirp
+                "{},{} }}, Offset: {{ {:?} }}, Chirp: {{ {:?} }}",
+                count,
+                cols,
+                offset.map(|o| o.len()),
+                chirp.map(|c| c.len())
             );
 
             // self.m_scan_out.respond(result).await;

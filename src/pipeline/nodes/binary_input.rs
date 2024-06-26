@@ -1,4 +1,9 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
+
+use futures::FutureExt;
+use tokio::{fs, io::AsyncReadExt};
+
+use crate::pipeline::types::{DataMatrix, DataType, DataVector};
 
 use super::prelude::*;
 
@@ -28,7 +33,8 @@ impl OutputId {
 #[derive(Debug, Clone)]
 pub struct Node {
     pub path: PathBuf,
-    pub data_type: OutputId,
+    pub input_type: OutputId,
+    pub data_type: DataType,
     pub a_scan_length: usize,
 }
 
@@ -36,7 +42,8 @@ impl Node {
     pub fn m_scan(path: PathBuf, a_scan_length: Option<usize>) -> Self {
         Self {
             path,
-            data_type: OutputId::RawMScan,
+            input_type: OutputId::RawMScan,
+            data_type: DataType::U16,
             a_scan_length: a_scan_length.unwrap_or(1024),
         }
     }
@@ -44,7 +51,8 @@ impl Node {
     pub fn data_vector(path: PathBuf) -> Self {
         Self {
             path,
-            data_type: OutputId::DataVector,
+            input_type: OutputId::DataVector,
+            data_type: DataType::F64,
             a_scan_length: 1024,
         }
     }
@@ -54,7 +62,8 @@ impl Default for Node {
     fn default() -> Self {
         Self {
             path: PathBuf::new(),
-            data_type: OutputId::RawMScan,
+            input_type: OutputId::RawMScan,
+            data_type: DataType::U16,
             a_scan_length: 1024,
         }
     }
@@ -69,8 +78,9 @@ impl PipelineNode for Node {
     }
     fn changed(&self, other: &Self) -> bool {
         self.path != other.path
-            || self.data_type != other.data_type
+            || self.input_type != other.input_type
             || self.a_scan_length != other.a_scan_length
+            || self.data_type != other.data_type
     }
     fn create_node_task(&self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>) {
         let raw_scan_out = builder.output(OutputId::RawMScan);
@@ -80,8 +90,9 @@ impl PipelineNode for Node {
             raw_scan_out,
             data_vector_out,
             path: self.path.clone(),
-            data_type: self.data_type.clone(),
-            a_scan_length: self.a_scan_length.clone(),
+            input_type: self.input_type,
+            data_type: self.data_type,
+            a_scan_length: self.a_scan_length,
         });
     }
 }
@@ -93,7 +104,8 @@ struct Task {
     data_vector_out: TaskOutput<requests::VectorData>,
 
     path: PathBuf,
-    data_type: OutputId,
+    input_type: OutputId,
+    data_type: DataType,
     a_scan_length: usize,
 }
 
@@ -107,8 +119,10 @@ impl NodeTask for Task {
 
     fn sync_node(&mut self, node: &Self::PipelineNode) {
         self.path = node.path.clone();
+        self.input_type = node.input_type;
         self.data_type = node.data_type;
         self.a_scan_length = node.a_scan_length;
+        println!("Synced BinaryInputNodeTask");
     }
 
     fn invalidate(&mut self) {
@@ -116,25 +130,81 @@ impl NodeTask for Task {
     }
 
     async fn run(&mut self) -> anyhow::Result<()> {
-        println!("Running BinaryInputNodeTask");
-        match self.data_type {
+        match self.input_type {
             OutputId::RawMScan => {
                 tokio::select! {
                     _req = self.raw_scan_out.receive() => {
-                        let output = format!("RawMScan: {:?} {:?}", self.path, self.a_scan_length);
-                        self.raw_scan_out.respond(output).await;
+                        self.respond_to_raw_m_scan().await?;
                     }
                 }
             }
             OutputId::DataVector => {
                 tokio::select! {
                     _req = self.data_vector_out.receive() => {
-                        let output = format!("DataVector: {:?}", self.path);
-                        self.data_vector_out.respond(output).await;
+                        self.respond_to_data_vector().await?;
                     }
                 }
             }
         }
+        Ok(())
+    }
+}
+
+impl Task {
+    async fn respond_to_data_vector(&mut self) -> anyhow::Result<()> {
+        let mut file = fs::File::open(&self.path).await?;
+
+        let mut buf = Vec::new();
+
+        file.read_to_end(&mut buf).await?;
+
+        let mut data =
+            DataVector::from_data_type(self.data_type, buf.len() / self.data_type.size());
+
+        data.as_mut_u8_slice().copy_from_slice(&buf);
+
+        self.data_vector_out.respond(Arc::new(data)).await;
+
+        Ok(())
+    }
+
+    async fn respond_to_raw_m_scan(&mut self) -> anyhow::Result<()> {
+        const CHUNK_SIZE: usize = 12000;
+
+        let mut file = fs::File::open(&self.path).await?;
+
+        let (output, tx) = requests::StreamedResponse::new(30);
+
+        self.raw_scan_out.respond(output).await;
+
+        self.raw_scan_out.receive().now_or_never();
+
+        loop {
+            let mut data =
+                DataMatrix::from_data_type(self.data_type, self.a_scan_length, CHUNK_SIZE);
+
+            let mut index = 0;
+
+            loop {
+                match file.read(&mut data.as_mut_u8_slice()[index..]).await? {
+                    0 => break,
+                    len => index += len,
+                }
+            }
+            let ncols = index / self.a_scan_length / self.data_type.size();
+
+            if ncols < CHUNK_SIZE {
+                if index == 0 {
+                    break;
+                }
+                let data = data.resize_horizontally(ncols);
+                tx.send(Arc::new(data));
+                break;
+            }
+
+            tx.send(Arc::new(data));
+        }
+
         Ok(())
     }
 }

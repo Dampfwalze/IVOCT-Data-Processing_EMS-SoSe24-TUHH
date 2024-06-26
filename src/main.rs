@@ -2,6 +2,7 @@ mod app;
 mod gui;
 mod node_graph;
 mod pipeline;
+mod queue_channel;
 
 use app::*;
 
