@@ -115,7 +115,7 @@ impl NodeTask for Task {
         println!("Invalidated BinaryInputNodeTask");
     }
 
-    async fn run(&mut self) {
+    async fn run(&mut self) -> anyhow::Result<()> {
         println!("Running BinaryInputNodeTask");
         match self.data_type {
             OutputId::RawMScan => {
@@ -135,5 +135,6 @@ impl NodeTask for Task {
                 }
             }
         }
+        Ok(())
     }
 }

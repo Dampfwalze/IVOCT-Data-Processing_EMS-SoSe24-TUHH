@@ -84,7 +84,7 @@ impl NodeTask for Task {
         println!("Invalidated ProcessRawMScanNodeTask");
     }
 
-    async fn run(&mut self) {
+    async fn run(&mut self) -> anyhow::Result<()> {
         let raw_scan = self.raw_scan_in.request(requests::RawMScan);
         let offset = self.offset_in.request(requests::VectorData);
         let chirp = self.chirp_in.request(requests::VectorData);
@@ -102,5 +102,7 @@ impl NodeTask for Task {
         }
 
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+        Ok(())
     }
 }

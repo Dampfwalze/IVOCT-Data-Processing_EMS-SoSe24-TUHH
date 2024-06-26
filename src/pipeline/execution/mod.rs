@@ -21,7 +21,7 @@ pub trait NodeTask: Send + Sync + 'static {
 
     fn invalidate(&mut self) {}
 
-    fn run(&mut self) -> impl Future<Output = ()> + Send;
+    fn run(&mut self) -> impl Future<Output = anyhow::Result<()>> + Send;
 }
 
 pub trait DynNodeTask: Send + Sync {
@@ -33,7 +33,7 @@ pub trait DynNodeTask: Send + Sync {
 
     fn invalidate(&mut self);
 
-    fn run(&mut self) -> BoxFuture<'_, ()>;
+    fn run(&mut self) -> BoxFuture<'_, anyhow::Result<()>>;
 }
 
 impl<T: NodeTask + Send + Sync> DynNodeTask for T {
@@ -57,7 +57,7 @@ impl<T: NodeTask + Send + Sync> DynNodeTask for T {
         self.invalidate()
     }
 
-    fn run(&mut self) -> BoxFuture<'_, ()> {
+    fn run(&mut self) -> BoxFuture<'_, anyhow::Result<()>> {
         Box::pin(self.run())
     }
 }

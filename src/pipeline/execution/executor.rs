@@ -1,7 +1,7 @@
 use core::fmt;
-use std::{collections::HashMap, sync::RwLock};
+use std::{collections::HashMap, panic, sync::RwLock};
 
-use futures::future::select_all;
+use futures::{future::select_all, FutureExt};
 use tokio::sync::{mpsc, watch};
 use vec_collections::{AbstractVecMap, VecMap};
 
@@ -204,6 +204,7 @@ impl RunningNodeTask {
     pub async fn run(mut self) {
         loop {
             tokio::select! {
+                biased;
                 msg = self.control_rx.recv() => {
                     match msg {
                         Some(ControlMsg::Connect(input_id, mut connection)) => {
@@ -236,8 +237,22 @@ impl RunningNodeTask {
     }
 
     async fn run_task(task: &mut dyn DynNodeTask) {
-        // TODO: Panic unwind safety
-        task.run().await;
+        let result = panic::AssertUnwindSafe(task.run()).catch_unwind().await;
+
+        match result {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => eprintln!("Task failed: {:?}", e),
+            Err(e) => eprintln!(
+                "Task panicked: {}",
+                if let Some(msg) = e.downcast_ref::<&'static str>() {
+                    msg.to_string()
+                } else if let Some(msg) = e.downcast_ref::<String>() {
+                    msg.clone()
+                } else {
+                    format!("?{:?}", e)
+                }
+            ),
+        }
     }
 
     fn invalidate(&mut self) {
