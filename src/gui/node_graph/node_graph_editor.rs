@@ -1,14 +1,15 @@
 use std::collections::HashMap;
 
 use egui::{
-    Color32, DragAndDrop, InnerResponse, Key, Pos2, Rect, Response, Sense, Shape, Stroke, Vec2,
+    Color32, DragAndDrop, InnerResponse, Key, PointerButton, Pos2, Rect, Response, Sense, Shape,
+    Stroke, Vec2,
 };
 
 use crate::gui::widgets::PanZoom;
 
 use super::{
-    add_node_popup::AddNodePopup, frame::NodeFrame, EditNodeGraph, InputId, NodeGraphEditState,
-    NodeId, NodeOutput, NodeUi, OutputId, TypeId,
+    add_node_popup::AddNodePopup, draw_cut::DrawCut, frame::NodeFrame, EditNodeGraph, InputId,
+    NodeGraphEditState, NodeId, NodeOutput, NodeUi, OutputId, TypeId,
 };
 
 #[derive(Debug, Clone)]
@@ -68,7 +69,11 @@ impl<'a> NodeGraphEditor<'a> {
 
         let (pipeline, state) = self.get_pipeline_state_mut();
 
-        let InnerResponse { response, .. } = PanZoom.show(ui, |ui, transform| {
+        let InnerResponse {
+            response,
+            inner: (connections, transform),
+            ..
+        } = PanZoom.show(ui, |ui, transform| {
             let node_ids = pipeline.get_node_ids();
 
             state.sync_state(&node_ids);
@@ -79,7 +84,7 @@ impl<'a> NodeGraphEditor<'a> {
 
             let bg_op = ui.painter().add(Shape::Noop);
 
-            let mut connections = Vec::<(Pos2, NodeOutput)>::new();
+            let mut connections = Vec::<(Pos2, NodeOutput, NodeId, InputId)>::new();
             let mut output_positions = HashMap::<NodeOutput, Pos2>::new();
 
             let mut pending_connection_end = None;
@@ -162,7 +167,7 @@ impl<'a> NodeGraphEditor<'a> {
                 for input in inputs.iter() {
                     let response = Self::sense_pin_drag(ui, input.pos, true);
 
-                    if response.dragged() {
+                    if response.dragged_by(PointerButton::Primary) {
                         response.dnd_set_drag_payload(DragPayload(
                             input.pos,
                             *node_id,
@@ -187,7 +192,7 @@ impl<'a> NodeGraphEditor<'a> {
                     }
 
                     if let Some(connection) = input.connection {
-                        connections.push((input.pos, connection));
+                        connections.push((input.pos, connection, *node_id, input.id));
                     }
 
                     ui.painter()
@@ -204,7 +209,7 @@ impl<'a> NodeGraphEditor<'a> {
                 for output in outputs.iter() {
                     let response = Self::sense_pin_drag(ui, output.pos, false);
 
-                    if response.dragged() {
+                    if response.dragged_by(PointerButton::Primary) {
                         response.dnd_set_drag_payload(DragPayload(
                             output.pos,
                             *node_id,
@@ -279,21 +284,47 @@ impl<'a> NodeGraphEditor<'a> {
                 }
             }
 
+            // Join connections with their output positions
+            let connections = connections
+                .iter()
+                .filter_map(|(input_pos, output, node_id, input_id)| {
+                    output_positions
+                        .get(output)
+                        .map(|output_pos| (*input_pos, *output_pos, *node_id, *input_id))
+                })
+                .collect::<Vec<_>>();
+
             // Draw existing connections
             let shapes = connections
                 .iter()
-                .filter_map(|(input_pos, output)| {
-                    output_positions
-                        .get(output)
-                        .map(|output_pos| Shape::LineSegment {
+                .map(|(input_pos, output_pos, _, _)| Shape::LineSegment {
                             points: [*input_pos, *output_pos],
                             stroke: Stroke::new(line_with, Color32::WHITE),
-                        })
                 })
-                .collect();
+                .collect::<Vec<_>>();
 
             ui.painter().set(bg_op, Shape::Vec(shapes));
+
+            (connections, *transform)
         });
+
+        if let (_, Some(line)) = DrawCut.ui(ui) {
+            let line = line
+                .iter()
+                .map(|pos| transform.inverse() * *pos)
+                .collect::<Vec<_>>();
+
+            for (p1, p2, node_id, input_id) in connections.iter() {
+                for (start, end) in line.iter().zip(line.iter().skip(1)) {
+                    if line_intersects(*p1, *p2, *start, *end).is_some() {
+                        pipeline
+                            .get_node_mut(*node_id)
+                            .map(|node| node.disconnect(*input_id));
+                        break;
+                    }
+                }
+            }
+        }
 
         response.context_menu(|ui| {
             if let Some(path) = AddNodePopup::new(&pipeline.addable_nodes()).show(ui) {
@@ -331,4 +362,20 @@ impl<'a> NodeGraphEditor<'a> {
 
         ui.memory_mut(|mem| mem.data.insert_temp(selected_id, selected));
     }
+}
+
+fn line_intersects(a: Pos2, b: Pos2, c: Pos2, d: Pos2) -> Option<Pos2> {
+    let enu = (a.x - c.x) * (c.y - d.y) - (a.y - c.y) * (c.x - d.x);
+    let den = (a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x);
+    let t = enu / den;
+
+    let enu = (a.x - b.x) * (a.y - c.y) - (a.y - b.y) * (a.x - c.x);
+    let den = (a.x - b.x) * (c.y - d.y) - (a.y - b.y) * (c.x - d.x);
+    let u = enu / den;
+
+    if t < 0.0 || t > 1.0 || u < -0.1 || u > 1.1 {
+        return None;
+    }
+
+    Some(a + t * (b - a))
 }

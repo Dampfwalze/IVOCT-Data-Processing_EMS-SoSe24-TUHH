@@ -1,4 +1,5 @@
 mod add_node_popup;
+mod draw_cut;
 mod frame;
 mod node_graph_editor;
 
