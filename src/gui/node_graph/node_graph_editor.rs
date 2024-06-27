@@ -86,11 +86,22 @@ impl<'a> NodeGraphEditor<'a> {
 
             let mut to_top = None;
 
+            let to_delete_id = ui.id().with("to_delete");
+
             let delete = !anything_focused
                 && ui
                     .ctx()
                     .input(|i| i.key_pressed(Key::Delete) || i.key_pressed(Key::Backspace));
-            let to_delete = if delete { selected } else { None };
+            let to_delete = if delete {
+                selected
+            } else {
+                ui.data_mut(|d| {
+                    d.get_temp::<NodeId>(to_delete_id).map(|id| {
+                        d.remove::<NodeId>(to_delete_id);
+                        id
+                    })
+                })
+            };
 
             for node_id in &state.node_order {
                 let node = pipeline.get_node_mut(*node_id);
@@ -114,6 +125,14 @@ impl<'a> NodeGraphEditor<'a> {
                             outputs: &mut outputs,
                         });
                     });
+
+                response.context_menu(|ui| {
+                    ui.label("Node");
+                    if ui.button("Delete").clicked() {
+                        ui.close_menu();
+                        ui.data_mut(|d| d.insert_temp(to_delete_id, *node_id))
+                    }
+                });
 
                 // Remove all connections to the outputs of the node that is
                 // being deleted
@@ -277,23 +296,14 @@ impl<'a> NodeGraphEditor<'a> {
         });
 
         response.context_menu(|ui| {
-            if let Some(node_id) = selected {
-                ui.label("Node");
-                if ui.button("Delete").clicked() {
-                    ui.close_menu();
-                    pipeline.remove_node(node_id);
-                    selected = None;
-                }
-            } else {
-                if let Some(path) = AddNodePopup::new(&pipeline.addable_nodes()).show(ui) {
-                    ui.close_menu();
-                    let node_id = pipeline.add_node(path);
-                    selected = Some(node_id);
+            if let Some(path) = AddNodePopup::new(&pipeline.addable_nodes()).show(ui) {
+                ui.close_menu();
+                let node_id = pipeline.add_node(path);
+                selected = Some(node_id);
 
-                    ui.data_mut(|d| {
-                        d.insert_temp::<usize>(following_id, node_id.into());
-                    });
-                }
+                ui.data_mut(|d| {
+                    d.insert_temp::<usize>(following_id, node_id.into());
+                });
             }
         });
 
