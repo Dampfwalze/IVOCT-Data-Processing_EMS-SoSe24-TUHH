@@ -83,15 +83,14 @@ impl<Req: Request> TaskInput<Req> {
     /// Connect this input to a connection.
     ///
     /// If already connected, will replace the connection.
-    pub fn connect(&mut self, connection: &mut ConnectionHandle) {
+    pub fn connect(&mut self, connection: &mut ConnectionHandle) -> bool {
         let default_value = match self {
             TaskInput::Disconnected(r) => r.take(),
             TaskInput::Connected { default_value, .. } => default_value.take(),
         };
 
         let Some((request_tx, response_rx)) = connection.connection.get_channels() else {
-            eprintln!("Connection has wrong type.");
-            return;
+            return false;
         };
 
         *self = TaskInput::Connected {
@@ -101,6 +100,7 @@ impl<Req: Request> TaskInput<Req> {
         };
 
         connection.did_connect = true;
+        true
     }
 }
 
@@ -140,7 +140,7 @@ impl<Req: Request> TaskOutput<Req> {
     /// request again.
     ///
     /// If there is no request to respond to, does nothing.
-    pub async fn respond(&mut self, response: Req::Response) {
+    pub fn respond(&mut self, response: Req::Response) {
         if self.working_on.is_none() {
             eprintln!(
                 "No request to respond to. This can only happen if the owning task is in an invalid state."

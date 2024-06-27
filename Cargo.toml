@@ -12,6 +12,11 @@ egui_dock = "0.12.0"
 futures = "0.3.30"
 nalgebra = { version = "0.33.0", features = ["bytemuck", "rayon"] }
 native-dialog = "0.7.0"
+num-traits = "0.2.19"
+rayon = "1.10.0"
+rustfft = "6.2.0"
+simba = "0.9.0"
+thiserror = "1.0.61"
 tokio = { version = "1.38.0", features = [
     "rt",
     "macros",

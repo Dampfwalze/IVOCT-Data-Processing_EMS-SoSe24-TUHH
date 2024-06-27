@@ -3,10 +3,6 @@ use egui::{emath::TSTransform, InnerResponse, LayerId, Order, Ui};
 pub struct PanZoom;
 
 impl PanZoom {
-    pub fn new() -> Self {
-        Self
-    }
-
     pub fn show<R>(
         &mut self,
         ui: &mut Ui,

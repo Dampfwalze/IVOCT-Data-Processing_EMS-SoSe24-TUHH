@@ -7,13 +7,28 @@ use egui::{
 };
 use native_dialog::FileDialog;
 
+pub enum PathInputAction {
+    OpenFile,
+    OpenFolder,
+    SaveFile,
+}
+
 pub struct PathInput<'a> {
     path: &'a mut PathBuf,
+    action: PathInputAction,
 }
 
 impl<'a> PathInput<'a> {
     pub fn new(path: &'a mut PathBuf) -> Self {
-        Self { path }
+        Self {
+            path,
+            action: PathInputAction::OpenFile,
+        }
+    }
+
+    pub fn action(mut self, action: PathInputAction) -> Self {
+        self.action = action;
+        self
     }
 }
 
@@ -36,7 +51,7 @@ impl<'a> Widget for PathInput<'a> {
             });
 
             if ui.button("...").clicked() {
-                match FileDialog::new().show_open_single_file() {
+                match open_dialog(self.action) {
                     Ok(Some(path)) => {
                         *self.path = path;
                     }
@@ -46,6 +61,14 @@ impl<'a> Widget for PathInput<'a> {
             }
         })
         .response
+    }
+}
+
+fn open_dialog(action: PathInputAction) -> native_dialog::Result<Option<PathBuf>> {
+    match action {
+        PathInputAction::OpenFile => FileDialog::new().show_open_single_file(),
+        PathInputAction::OpenFolder => FileDialog::new().show_open_single_dir(),
+        PathInputAction::SaveFile => FileDialog::new().show_save_single_file(),
     }
 }
 

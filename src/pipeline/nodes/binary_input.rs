@@ -163,7 +163,7 @@ impl Task {
 
         data.as_mut_u8_slice().copy_from_slice(&buf);
 
-        self.data_vector_out.respond(Arc::new(data)).await;
+        self.data_vector_out.respond(Arc::new(data));
 
         Ok(())
     }
@@ -173,9 +173,9 @@ impl Task {
 
         let mut file = fs::File::open(&self.path).await?;
 
-        let (output, tx) = requests::StreamedResponse::new(30);
+        let (output, tx) = requests::StreamedResponse::new(200);
 
-        self.raw_scan_out.respond(output).await;
+        self.raw_scan_out.respond(output);
 
         self.raw_scan_out.receive().now_or_never();
 

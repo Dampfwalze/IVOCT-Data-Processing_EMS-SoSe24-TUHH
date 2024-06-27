@@ -11,6 +11,7 @@ use std::collections::HashMap;
 
 use crate::node_graph::{impl_enum_from_into_id_types, NodeId, TypeId};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PipelineDataType {
     RawMScan,
     DataVector,
@@ -22,6 +23,14 @@ impl_enum_from_into_id_types!(PipelineDataType, [TypeId], {
     1 => DataVector,
     2 => MScan,
 });
+
+impl PipelineDataType {
+    const VALUES: [PipelineDataType; 3] = [
+        PipelineDataType::RawMScan,
+        PipelineDataType::DataVector,
+        PipelineDataType::MScan,
+    ];
+}
 
 pub struct Pipeline {
     pub nodes: HashMap<NodeId, Box<dyn DynPipelineNode>>,

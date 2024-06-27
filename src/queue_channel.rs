@@ -135,15 +135,21 @@ impl<T: Clone> Queue<T> {
 }
 
 pub mod error {
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    use thiserror::Error;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
     pub enum RecvError {
+        #[error("The queue is lagging behind")]
         Lagged,
+        #[error("The queue has been closed")]
         Closed,
     }
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
     pub(super) enum GetError {
+        #[error("The index is too new")]
         TooNew,
+        #[error("The index is too old")]
         TooOld,
     }
 }

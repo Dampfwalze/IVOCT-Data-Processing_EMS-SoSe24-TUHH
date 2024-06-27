@@ -145,10 +145,6 @@ pub(super) struct CollectedOutput {
 }
 
 impl NodeUi<'_> {
-    pub fn ui(&mut self) -> &mut egui::Ui {
-        self.ui
-    }
-
     pub fn input(
         &mut self,
         id: impl Into<InputId>,

@@ -1,4 +1,4 @@
-use egui::Color32;
+use egui::{Color32, DragValue};
 
 use crate::pipeline::nodes::process_raw_m_scan::*;
 
@@ -68,6 +68,12 @@ impl EditNode for Node {
             |ui| {
                 ui.node_label("Chirp");
             },
+        );
+
+        ui.add(
+            DragValue::new(&mut self.factor)
+                .clamp_range(0.0..=f64::INFINITY)
+                .prefix("Factor: "),
         );
     }
 }

@@ -1,7 +1,9 @@
 mod app;
 mod gui;
+#[allow(unused)]
 mod node_graph;
 mod pipeline;
+#[allow(unused)]
 mod queue_channel;
 
 use app::*;

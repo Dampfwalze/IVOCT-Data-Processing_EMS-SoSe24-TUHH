@@ -1,9 +1,17 @@
 {
     "cSpell.words": [
+        "bytemuck",
+        "consts",
         "eframe",
         "egui",
+        "hann",
         "IVOCT",
+        "nalgebra",
+        "ncols",
+        "nrows",
         "repr",
+        "rustfft",
+        "thiserror",
         "wgpu"
     ]
 }

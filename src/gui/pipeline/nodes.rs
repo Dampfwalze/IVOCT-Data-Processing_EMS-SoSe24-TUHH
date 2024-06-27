@@ -1,5 +1,8 @@
 pub mod binary_input;
+pub mod output;
 pub mod process_raw_m_scan;
+
+use core::fmt;
 
 use egui::Color32;
 
@@ -40,6 +43,7 @@ mod colors {
     use egui::Color32;
 
     pub const INPUT: Color32 = Color32::from_rgb(121, 70, 29);
+    pub const OUTPUT: Color32 = Color32::from_rgb(0, 128, 255);
 }
 
 impl PipelineDataType {
@@ -48,6 +52,16 @@ impl PipelineDataType {
             PipelineDataType::RawMScan => Color32::from_rgb(121, 70, 29),
             PipelineDataType::DataVector => Color32::from_rgb(0, 128, 255),
             PipelineDataType::MScan => Color32::from_rgb(121, 70, 29),
+        }
+    }
+}
+
+impl fmt::Display for PipelineDataType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PipelineDataType::RawMScan => write!(f, "Raw M scan"),
+            PipelineDataType::DataVector => write!(f, "Data vector"),
+            PipelineDataType::MScan => write!(f, "M scan"),
         }
     }
 }

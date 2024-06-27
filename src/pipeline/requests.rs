@@ -30,7 +30,11 @@ impl Request for VectorData {
 }
 
 impl Request for MScan {
-    type Response = String;
+    type Response = StreamedResponse<Arc<DataMatrix>>;
+
+    fn is_response_valid(&self, response: &Self::Response) -> bool {
+        !response.is_lagged()
+    }
 }
 
 // MARK: StreamedResponse

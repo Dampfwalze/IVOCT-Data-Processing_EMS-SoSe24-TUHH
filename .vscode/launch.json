@@ -26,7 +26,7 @@
             "type": "node-terminal",
             "request": "launch",
             "name": "Launch executable 'test_gui_rust_2'",
-            "command": "cargo run --bin test_gui_rust_2 --package test_gui_rust_2",
+            "command": "cargo run --release --bin test_gui_rust_2 --package test_gui_rust_2",
             "cwd": "${workspaceFolder}"
         },
         {
