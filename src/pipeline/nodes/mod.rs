@@ -9,7 +9,7 @@ use vec_collections::VecMap;
 
 use crate::{
     gui::node_graph::{DynEditNode, EditNode},
-    node_graph::{InputId, NodeOutput, OutputId},
+    node_graph::{InputId, NodeOutput, OutputId, TypeId},
 };
 
 use super::execution::{
@@ -20,8 +20,8 @@ use super::execution::{
 #[allow(unused_imports)]
 mod prelude {
     pub(crate) use crate::pipeline::{
-            execution::{ConnectionHandle, NodeTask, NodeTaskBuilder, TaskInput, TaskOutput},
-            requests, PipelineDataType,
+        execution::{ConnectionHandle, NodeTask, NodeTaskBuilder, TaskInput, TaskOutput},
+        requests, PipelineDataType,
     };
 
     pub(crate) use super::PipelineNode;
@@ -51,6 +51,12 @@ pub trait PipelineNode: fmt::Debug
 
     fn changed(&self, other: &Self) -> bool;
 
+    fn get_output_id_for_view_request(
+        &self,
+    ) -> Option<(<Self as PipelineNode>::OutputId, impl Into<TypeId>)> {
+        None as Option<(_, TypeId)>
+    }
+
     fn create_node_task(&self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>);
 }
 
@@ -66,6 +72,8 @@ pub trait DynPipelineNode: DynEditNode + Send + Sync + 'static {
     fn inputs(&self) -> Vec<(InputId, Option<NodeOutput>)>;
 
     fn changed(&self, other: &dyn DynPipelineNode) -> bool;
+
+    fn get_output_for_view_request(&self) -> Option<(OutputId, TypeId)>;
 
     fn create_node_task(
         &self,
@@ -103,6 +111,11 @@ impl<T: PipelineNode> DynPipelineNode for T {
         } else {
             false
         }
+    }
+
+    fn get_output_for_view_request(&self) -> Option<(OutputId, TypeId)> {
+        self.get_output_id_for_view_request()
+            .map(|(id, ty)| (id.into(), ty.into()))
     }
 
     fn create_node_task(

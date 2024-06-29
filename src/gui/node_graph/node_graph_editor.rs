@@ -12,13 +12,9 @@ use super::{
     NodeGraphEditState, NodeId, NodeOutput, NodeUi, OutputId, TypeId,
 };
 
-#[derive(Debug, Clone)]
-struct DragPayload(Pos2, NodeId, PayloadPin);
-
-#[derive(Debug, Clone)]
-enum PayloadPin {
-    Output(OutputId, TypeId),
-    Input(InputId),
+pub struct NodeGraphResponse {
+    pub selected: Option<NodeId>,
+    pub activated: Option<NodeId>,
 }
 
 pub struct NodeGraphEditor<'a> {
@@ -48,7 +44,7 @@ impl<'a> NodeGraphEditor<'a> {
     }
 
     #[allow(non_upper_case_globals)]
-    pub fn show(&mut self, ui: &mut egui::Ui) {
+    pub fn show(&mut self, ui: &mut egui::Ui) -> NodeGraphResponse {
         const line_with: f32 = 2.0;
         const pin_hover_point_radius: f32 = 2.0;
         const pin_radius: f32 = 4.0;
@@ -59,6 +55,8 @@ impl<'a> NodeGraphEditor<'a> {
 
         let selected_id = ui.id().with("selected");
         let mut selected: Option<NodeId> = ui.data(|d| d.get_temp(selected_id)).unwrap_or_default();
+
+        let mut activated = None;
 
         let following_id = ui.id().with("following_node");
         let following_node: Option<NodeId> = ui
@@ -130,6 +128,10 @@ impl<'a> NodeGraphEditor<'a> {
                             outputs: &mut outputs,
                         });
                     });
+
+                if response.double_clicked() {
+                    activated = Some(*node_id);
+                }
 
                 response.context_menu(|ui| {
                     ui.label("Node");
@@ -298,8 +300,8 @@ impl<'a> NodeGraphEditor<'a> {
             let shapes = connections
                 .iter()
                 .map(|(input_pos, output_pos, _, _)| Shape::LineSegment {
-                            points: [*input_pos, *output_pos],
-                            stroke: Stroke::new(line_with, Color32::WHITE),
+                    points: [*input_pos, *output_pos],
+                    stroke: Stroke::new(line_with, Color32::WHITE),
                 })
                 .collect::<Vec<_>>();
 
@@ -361,7 +363,21 @@ impl<'a> NodeGraphEditor<'a> {
         }
 
         ui.memory_mut(|mem| mem.data.insert_temp(selected_id, selected));
+
+        NodeGraphResponse {
+            selected,
+            activated,
+        }
     }
+}
+
+#[derive(Debug, Clone)]
+struct DragPayload(Pos2, NodeId, PayloadPin);
+
+#[derive(Debug, Clone)]
+enum PayloadPin {
+    Output(OutputId, TypeId),
+    Input(InputId),
 }
 
 fn line_intersects(a: Pos2, b: Pos2, c: Pos2, d: Pos2) -> Option<Pos2> {

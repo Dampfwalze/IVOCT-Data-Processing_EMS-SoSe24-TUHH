@@ -5,6 +5,7 @@ mod node_graph;
 mod pipeline;
 #[allow(unused)]
 mod queue_channel;
+mod view;
 
 use app::*;
 

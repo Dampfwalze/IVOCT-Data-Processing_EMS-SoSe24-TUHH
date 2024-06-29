@@ -67,6 +67,10 @@ impl PipelineNode for Node {
         self.factor != other.factor
     }
 
+    fn get_output_id_for_view_request(&self) -> Option<(OutputIdSingle, PipelineDataType)> {
+        Some((OutputIdSingle, PipelineDataType::MScan))
+    }
+
     fn create_node_task(&self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>) {
         let m_scan_out = builder.output(OutputIdSingle);
 

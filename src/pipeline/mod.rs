@@ -7,7 +7,10 @@ pub use execution::PipelineExecutor;
 use nodes::DynPipelineNode;
 
 use core::fmt;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    ops::{Index, IndexMut},
+};
 
 use crate::node_graph::{impl_enum_from_into_id_types, NodeId, TypeId};
 
@@ -41,6 +44,20 @@ impl Pipeline {
         Self {
             nodes: HashMap::new(),
         }
+    }
+}
+
+impl Index<NodeId> for Pipeline {
+    type Output = dyn DynPipelineNode;
+
+    fn index(&self, index: NodeId) -> &Self::Output {
+        self.nodes[&index].as_ref()
+    }
+}
+
+impl IndexMut<NodeId> for Pipeline {
+    fn index_mut(&mut self, index: NodeId) -> &mut Self::Output {
+        self.nodes.get_mut(&index).unwrap().as_mut()
     }
 }
 

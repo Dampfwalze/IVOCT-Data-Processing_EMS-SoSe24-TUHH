@@ -76,12 +76,18 @@ impl PipelineNode for Node {
     fn inputs(&self) -> impl Iterator<Item = (InputIdNone, Option<NodeOutput>)> {
         std::iter::empty()
     }
+
     fn changed(&self, other: &Self) -> bool {
         self.path != other.path
             || self.input_type != other.input_type
             || self.a_scan_length != other.a_scan_length
             || self.data_type != other.data_type
     }
+
+    fn get_output_id_for_view_request(&self) -> Option<(OutputId, PipelineDataType)> {
+        Some((self.input_type, self.input_type.data_type()))
+    }
+
     fn create_node_task(&self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>) {
         let raw_scan_out = builder.output(OutputId::RawMScan);
         let data_vector_out = builder.output(OutputId::DataVector);
@@ -122,11 +128,6 @@ impl NodeTask for Task {
         self.input_type = node.input_type;
         self.data_type = node.data_type;
         self.a_scan_length = node.a_scan_length;
-        println!("Synced BinaryInputNodeTask");
-    }
-
-    fn invalidate(&mut self) {
-        println!("Invalidated BinaryInputNodeTask");
     }
 
     async fn run(&mut self) -> anyhow::Result<()> {
