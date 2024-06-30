@@ -106,10 +106,9 @@ impl<T: PipelineNode> DynPipelineNode for T {
     }
 
     fn changed(&self, other: &dyn DynPipelineNode) -> bool {
-        if let Some(other) = other.as_any().downcast_ref::<T>() {
-            self.changed(other)
-        } else {
-            false
+        match other.as_any().downcast_ref::<T>() {
+            Some(other) => self.changed(other),
+            None => false,
         }
     }
 

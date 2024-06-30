@@ -102,6 +102,10 @@ impl<Req: Request> TaskInput<Req> {
         connection.did_connect = true;
         true
     }
+
+    pub fn is_connected(&self) -> bool {
+        matches!(self, TaskInput::Connected { .. })
+    }
 }
 
 impl<Req: Request> TaskOutput<Req> {
@@ -223,15 +227,15 @@ impl ConnectionHandle {
         )
     }
 
-    pub(super) fn get_invalidation_notifier(&self) -> InvalidationNotifier {
+    pub fn get_invalidation_notifier(&self) -> InvalidationNotifier {
         self.connection.get_invalidation_notifier()
     }
 
-    pub(super) fn reset_connection(&mut self) {
+    pub fn reset_connection(&mut self) {
         self.did_connect = false;
     }
 
-    pub(super) fn did_connect(&self) -> bool {
+    pub fn did_connect(&self) -> bool {
         self.did_connect
     }
 }

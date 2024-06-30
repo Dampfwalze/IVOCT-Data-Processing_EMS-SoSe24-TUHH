@@ -4,10 +4,13 @@ use crate::{
     pipeline::{self, Pipeline},
 };
 
-use super::{DataView, DataViewsState, ViewId};
+use super::{
+    views::{DynDataView, Existence},
+    DataView, DataViewsState, ViewId,
+};
 
 pub struct DataViewsManager {
-    view_factories: Vec<Box<dyn Fn(&NodeOutput, &Pipeline) -> Option<Box<dyn DataView>>>>,
+    view_factories: Vec<Box<dyn Fn(&NodeOutput, &Pipeline) -> Option<Box<dyn DynDataView>>>>,
     last_focused_view: Option<ViewId>,
 }
 
@@ -21,7 +24,7 @@ impl DataViewsManager {
 
     pub fn with_view<T: DataView>(mut self) -> Self {
         self.view_factories.push(Box::new(|o, p| {
-            T::from_node_output(o, p).map(|v| Box::new(v) as Box<dyn DataView>)
+            T::from_node_output(o, p).map(|v| Box::new(v) as Box<dyn DynDataView>)
         }));
         self
     }
@@ -41,6 +44,26 @@ impl DataViewsManager {
                 _ => false,
             })
         });
+
+        // Disconnect from removed nodes
+        let mut to_destroy = Vec::new();
+        for (view_id, view) in state.views.iter_mut() {
+            for (input_id, node_id) in view
+                .inputs()
+                .iter()
+                .filter_map(|(id, out)| out.map(|o| (*id, o.node_id)))
+            {
+                if !pipeline.nodes.contains_key(&node_id) {
+                    if let Existence::Destroy = view.disconnect(input_id) {
+                        to_destroy.push(*view_id);
+                        break;
+                    }
+                }
+            }
+        }
+        for view_id in to_destroy {
+            state.views.remove(&view_id);
+        }
 
         // Track last focused view
         if let Some((_, TabType::DataView(view_id))) = dock_state.find_active_focused() {
@@ -90,7 +113,7 @@ impl DataViewsManager {
         &self,
         node_output: &NodeOutput,
         pipeline: &Pipeline,
-    ) -> Option<Box<dyn DataView>> {
+    ) -> Option<Box<dyn DynDataView>> {
         for factory in &self.view_factories {
             if let Some(view) = factory(node_output, pipeline) {
                 return Some(view);

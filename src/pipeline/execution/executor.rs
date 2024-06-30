@@ -18,6 +18,8 @@ use super::{
     Request, TaskOutput,
 };
 
+// MARK: PipelineExecutor
+
 #[derive(Debug)]
 pub struct PipelineExecutor {
     runners: HashMap<NodeId, RwLock<NodeTaskRunner>>,
@@ -30,7 +32,7 @@ impl PipelineExecutor {
         }
     }
 
-    pub fn update(&mut self, pipeline: &mut Pipeline) {
+    pub fn update(&mut self, pipeline: &Pipeline) {
         // Deleted nodes
         self.runners.retain(|id, _| pipeline.nodes.contains_key(id));
 
@@ -54,7 +56,15 @@ impl PipelineExecutor {
             runner.sync_node(node.as_ref());
         }
     }
+
+    pub fn get_output(&self, node_id: NodeId, output_id: OutputId) -> Option<ConnectionHandle> {
+        self.runners
+            .get(&node_id)
+            .and_then(|r| r.read().unwrap().get_output(output_id))
+    }
 }
+
+// MARK: NodeTaskRunner
 
 struct NodeTaskRunner {
     output_handles: VecMap<[(OutputId, ConnectionHandle); 4]>,
@@ -193,6 +203,8 @@ impl fmt::Debug for NodeTaskRunner {
     }
 }
 
+// MARK: RunningNodeTask
+
 struct RunningNodeTask {
     node_task: Box<dyn DynNodeTask>,
     control_rx: mpsc::UnboundedReceiver<ControlMsg>,
@@ -292,6 +304,8 @@ impl RunningNodeTask {
     }
 }
 
+// MARK: ControlMsg
+
 enum ControlMsg {
     Connect(InputId, ConnectionHandle),
     Disconnect(InputId),
@@ -307,6 +321,8 @@ impl fmt::Debug for ControlMsg {
         }
     }
 }
+
+// MARK: NodeTaskBuilderImpl
 
 pub struct NodeTaskBuilderImpl<T: PipelineNode> {
     connection_handles: VecMap<[(OutputId, ConnectionHandle); 4]>,

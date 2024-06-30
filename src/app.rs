@@ -7,7 +7,9 @@ use crate::{
     },
     node_graph::NodeId,
     pipeline,
-    view::{views, views_manager::DataViewsManager, DataViewsState},
+    view::{
+        execution::executor::ViewsExecutor, views, views_manager::DataViewsManager, DataViewsState,
+    },
 };
 
 pub struct IVOCTTestApp {
@@ -17,6 +19,7 @@ pub struct IVOCTTestApp {
 
     data_views_state: DataViewsState,
     data_views_manager: DataViewsManager,
+    data_views_executor: ViewsExecutor,
 
     dock_state: DockState,
 
@@ -31,6 +34,7 @@ impl IVOCTTestApp {
             pipeline_executor: pipeline::PipelineExecutor::new(),
             data_views_state: DataViewsState::new(),
             data_views_manager: DataViewsManager::new().with_view::<views::data_vector::View>(),
+            data_views_executor: ViewsExecutor::new(),
             dock_state: DockState::new(),
             interacted_node: None,
         }
@@ -47,19 +51,6 @@ impl eframe::App for IVOCTTestApp {
             .style(egui_dock::Style::from_egui(ctx.style().as_ref()))
             .show(ctx, self);
 
-        egui::Window::new("debug").show(ctx, |ui| {
-            ui.label("Debug panel");
-
-            if ui.button("Add view").clicked() {
-                let id: usize = ui.data_mut(|d| {
-                    let val = d.get_temp(ui.id().with("debug_view_id")).unwrap_or(0) + 1;
-                    d.insert_temp(ui.id().with("debug_view_id"), val);
-                    val
-                });
-                dock_state.add_view_tab(id.into());
-            }
-        });
-
         self.dock_state = dock_state;
 
         self.data_views_manager.update(
@@ -71,6 +62,9 @@ impl eframe::App for IVOCTTestApp {
         );
 
         self.pipeline_executor.update(&mut self.pipeline);
+
+        self.data_views_executor
+            .update(&mut self.data_views_state, &self.pipeline_executor);
     }
 }
 
@@ -84,6 +78,18 @@ impl egui_dock::TabViewer for IVOCTTestApp {
                 format!("Data View {:?}", Into::<usize>::into(*view_id)).into()
             }
         }
+    }
+
+    fn force_close(&mut self, tab: &mut Self::Tab) -> bool {
+        // Close data views that are either non-existent anymore or have no
+        // inputs
+        matches!(
+            tab,
+            TabType::DataView(view_id) if self
+                .data_views_state
+                .get(*view_id)
+                .map_or(true, |v| v.inputs().is_empty())
+        )
     }
 
     fn closeable(&mut self, tab: &mut Self::Tab) -> bool {
@@ -119,9 +125,13 @@ impl egui_dock::TabViewer for IVOCTTestApp {
                 }
             }
             TabType::DataView(view_id) => {
-                ui.label(format!("Data View {:?}", Into::<usize>::into(*view_id)));
                 if let Some(view) = self.data_views_state.get_mut(*view_id) {
                     view.ui(ui);
+                } else {
+                    ui.label(format!(
+                        "Data View {:?} does not exist, You can close this tab.",
+                        Into::<usize>::into(*view_id)
+                    ));
                 }
             }
         }

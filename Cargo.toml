@@ -9,6 +9,7 @@ bytemuck = { version = "1.16.1", features = ["derive"] }
 eframe = { version = "0.27.2", features = ["wgpu"] }
 egui = "0.27.2"
 egui_dock = "0.12.0"
+egui_plot = "0.27.2"
 futures = "0.3.30"
 nalgebra = { version = "0.33.0", features = ["bytemuck", "rayon"] }
 native-dialog = "0.7.0"
