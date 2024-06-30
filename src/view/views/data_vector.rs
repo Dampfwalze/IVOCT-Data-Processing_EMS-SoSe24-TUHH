@@ -61,9 +61,21 @@ impl DataView for View {
     }
 
     fn ui(&mut self, ui: &mut egui::Ui) {
-        if let Some(data_rx) = &self.data_rx {
-            if let Some(data) = data_rx.borrow().as_ref() {
-                plot_data(ui, data.as_ref());
+        if let Some(data_rx) = &mut self.data_rx {
+            let changed = data_rx.has_changed().unwrap_or(false);
+
+            if let Some(data) = data_rx.borrow_and_update().as_ref() {
+                let mut plot = Plot::new("Data Vector").allow_scroll(false);
+
+                if changed {
+                    plot = plot.reset();
+                }
+
+                plot.show(ui, |plot_ui| {
+                    plot_ui.line(Line::new(PlotPoints::from_ys_f32(
+                        data.as_ref().clone().cast().as_slice(),
+                    )));
+                });
             } else {
                 ui.label("No data available");
             }
@@ -71,14 +83,6 @@ impl DataView for View {
             ui.label("No data receiver available");
         }
     }
-}
-
-fn plot_data(ui: &mut egui::Ui, data: &DataVector) {
-    let data = data.clone().cast::<f32>();
-
-    Plot::new("Data Vector").show(ui, |plot_ui| {
-        plot_ui.line(Line::new(PlotPoints::from_ys_f32(data.as_slice())));
-    });
 }
 
 struct Task {
@@ -110,7 +114,7 @@ impl DataViewTask for Task {
     }
 
     async fn run(&mut self) -> anyhow::Result<()> {
-        if self.input.is_connected() {
+        if self.input.is_connected() && self.data_tx.borrow().is_none() {
             let Some(data) = self.input.request(requests::VectorData).await else {
                 return Err(anyhow!("No input data available"));
             };
