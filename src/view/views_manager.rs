@@ -1,5 +1,3 @@
-use egui_dock::TabIndex;
-
 use crate::{
     gui::dock_state::{DockState, TabType},
     node_graph::{NodeId, NodeOutput},
@@ -44,6 +42,7 @@ impl DataViewsManager {
             })
         });
 
+        // Track last focused view
         if let Some((_, TabType::DataView(view_id))) = dock_state.find_active_focused() {
             self.last_focused_view = Some(*view_id);
         }
@@ -62,39 +61,28 @@ impl DataViewsManager {
             };
 
             if ctrl_pressed {
-                let Some(view) = self.create_view(&node_output, pipeline) else {
-                    return;
-                };
-
-                let view_id = state.add_view(view);
-
-                dock_state.add_view_tab(view_id);
+                self.create_and_open_view(state, dock_state, &node_output, pipeline);
+            } else if let Some(view_id) =
+                self.try_connect_view(state, dock_state, node_output, pipeline)
+            {
+                dock_state.focus_view(view_id);
             } else {
-                if let Some(view_id) =
-                    self.try_connect_views(state, dock_state, node_output, pipeline)
-                {
-                    if let Some((surf_idx, node_idx)) = {
-                        let mut iter = dock_state.iter_all_tabs();
-                        iter.find_map(|(surf_node, tab)| match tab {
-                            TabType::DataView(id) if *id == view_id => Some(surf_node),
-                            _ => None,
-                        })
-                    } {
-                        dock_state.set_focused_node_and_surface((surf_idx, node_idx));
-
-                        // Focus tab inside node
-                        if let egui_dock::Node::<TabType>::Leaf { tabs, active, .. } =
-                            &mut dock_state[surf_idx][node_idx]
-                        {
-                            *active = tabs
-                                .iter()
-                                .position(|t| matches!(t, TabType::DataView(id) if *id == view_id))
-                                .map(TabIndex)
-                                .unwrap();
-                        }
-                    }
-                }
+                self.create_and_open_view(state, dock_state, &node_output, pipeline);
             }
+        }
+    }
+
+    fn create_and_open_view(
+        &self,
+        state: &mut DataViewsState,
+        dock_state: &mut DockState,
+        node_output: &NodeOutput,
+        pipeline: &Pipeline,
+    ) {
+        if let Some(view) = self.create_view(node_output, pipeline) {
+            let view_id = state.add_view(view);
+
+            dock_state.add_view_tab(view_id);
         }
     }
 
@@ -112,7 +100,7 @@ impl DataViewsManager {
         None
     }
 
-    fn try_connect_views(
+    fn try_connect_view(
         &self,
         state: &mut DataViewsState,
         dock_state: &mut DockState,

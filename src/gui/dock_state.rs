@@ -73,6 +73,26 @@ impl DockState {
 
         true
     }
+
+    pub fn focus_view(&mut self, view_id: ViewId) {
+        if let Some((surf_idx, node_idx)) = {
+            let mut iter = self.iter_all_tabs();
+            iter.find_map(|(surf_node, tab)| match tab {
+                TabType::DataView(id) if *id == view_id => Some(surf_node),
+                _ => None,
+            })
+        } {
+            self.set_focused_node_and_surface((surf_idx, node_idx));
+
+            if let egui_dock::Node::Leaf { tabs, active, .. } = &mut self[surf_idx][node_idx] {
+                *active = tabs
+                    .iter()
+                    .position(|t| matches!(t, TabType::DataView(id) if *id == view_id))
+                    .map(TabIndex)
+                    .expect("Tab should already be found in previous search");
+            }
+        }
+    }
 }
 
 impl Deref for DockState {
