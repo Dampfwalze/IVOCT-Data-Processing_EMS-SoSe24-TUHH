@@ -26,15 +26,17 @@ impl PanZoom {
         }
 
         if let Some(pointer) = pointer.hover_pos() {
-            let pointer_in_layer = transform.inverse() * pointer;
-            let zoom_delta = ui.ctx().input(|i| i.zoom_delta());
-            let scroll_delta = ui.ctx().input(|i| (i.smooth_scroll_delta.y / 200.0).exp());
+            if rect.contains(pointer) {
+                let pointer_in_layer = transform.inverse() * pointer;
+                let zoom_delta = ui.ctx().input(|i| i.zoom_delta());
+                let scroll_delta = ui.ctx().input(|i| (i.smooth_scroll_delta.y / 200.0).exp());
 
-            // Zoom in on pointer
-            transform = transform
-                * TSTransform::from_translation(pointer_in_layer.to_vec2())
-                * TSTransform::from_scaling(zoom_delta * scroll_delta)
-                * TSTransform::from_translation(-pointer_in_layer.to_vec2());
+                // Zoom in on pointer
+                transform = transform
+                    * TSTransform::from_translation(pointer_in_layer.to_vec2())
+                    * TSTransform::from_scaling(zoom_delta * scroll_delta)
+                    * TSTransform::from_translation(-pointer_in_layer.to_vec2());
+            }
         }
 
         let layer_id = LayerId::new(
