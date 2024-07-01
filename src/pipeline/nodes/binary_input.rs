@@ -1,7 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use futures::FutureExt;
-use tokio::{fs, io::AsyncReadExt};
+use tokio::{fs, io::AsyncReadExt, sync::watch};
 
 use crate::pipeline::types::{DataMatrix, DataType, DataVector};
 
@@ -36,6 +36,8 @@ pub struct Node {
     pub input_type: OutputId,
     pub data_type: DataType,
     pub a_scan_length: usize,
+
+    pub progress_rx: Option<watch::Receiver<Option<f32>>>,
 }
 
 impl Node {
@@ -45,6 +47,7 @@ impl Node {
             input_type: OutputId::RawMScan,
             data_type: DataType::U16,
             a_scan_length: a_scan_length.unwrap_or(1024),
+            progress_rx: None,
         }
     }
 
@@ -54,6 +57,7 @@ impl Node {
             input_type: OutputId::DataVector,
             data_type: DataType::F64,
             a_scan_length: 1024,
+            progress_rx: None,
         }
     }
 }
@@ -65,6 +69,7 @@ impl Default for Node {
             input_type: OutputId::RawMScan,
             data_type: DataType::U16,
             a_scan_length: 1024,
+            progress_rx: None,
         }
     }
 }
@@ -88,9 +93,13 @@ impl PipelineNode for Node {
         Some((self.input_type, self.input_type.data_type()))
     }
 
-    fn create_node_task(&self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>) {
+    fn create_node_task(&mut self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>) {
         let raw_scan_out = builder.output(OutputId::RawMScan);
         let data_vector_out = builder.output(OutputId::DataVector);
+
+        let (progress_tx, progress_rx) = watch::channel(None);
+
+        self.progress_rx = Some(progress_rx);
 
         builder.task(Task {
             raw_scan_out,
@@ -99,6 +108,7 @@ impl PipelineNode for Node {
             input_type: self.input_type,
             data_type: self.data_type,
             a_scan_length: self.a_scan_length,
+            progress_tx,
         });
     }
 }
@@ -113,6 +123,8 @@ struct Task {
     input_type: OutputId,
     data_type: DataType,
     a_scan_length: usize,
+
+    progress_tx: watch::Sender<Option<f32>>,
 }
 
 impl NodeTask for Task {
@@ -128,6 +140,10 @@ impl NodeTask for Task {
         self.input_type = node.input_type;
         self.data_type = node.data_type;
         self.a_scan_length = node.a_scan_length;
+    }
+
+    fn invalidate(&mut self, _cause: InvalidationCause) {
+        let _ = self.progress_tx.send(None);
     }
 
     async fn run(&mut self) -> anyhow::Result<()> {
@@ -176,15 +192,19 @@ impl Task {
 
         let (output, tx) = requests::StreamedResponse::new(200);
 
+        let _ = self.progress_tx.send(Some(0.0));
+
+        let file_len = file.metadata().await?.len() as usize;
+
         self.raw_scan_out.respond(requests::RawMScanResponse {
             data: output,
             a_scan_samples: self.a_scan_length,
-            a_scan_count: file.metadata().await?.len() as usize
-                / self.a_scan_length as usize
-                / self.data_type.size(),
+            a_scan_count: file_len / self.a_scan_length as usize / self.data_type.size(),
         });
 
         self.raw_scan_out.receive().now_or_never();
+
+        let mut bytes_read = 0;
 
         loop {
             let mut data =
@@ -209,8 +229,15 @@ impl Task {
                 break;
             }
 
+            bytes_read += index;
+            let _ = self
+                .progress_tx
+                .send(Some(bytes_read as f32 / file_len as f32));
+
             tx.send(Arc::new(data));
         }
+
+        let _ = self.progress_tx.send(None);
 
         Ok(())
     }

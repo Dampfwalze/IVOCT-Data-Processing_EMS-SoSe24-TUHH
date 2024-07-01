@@ -59,7 +59,7 @@ pub trait PipelineNode: fmt::Debug
         None as Option<(_, TypeId)>
     }
 
-    fn create_node_task(&self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>);
+    fn create_node_task(&mut self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>);
 }
 
 pub trait DynPipelineNode: DynEditNode + Send + Sync + 'static {
@@ -78,7 +78,7 @@ pub trait DynPipelineNode: DynEditNode + Send + Sync + 'static {
     fn get_output_for_view_request(&self) -> Option<(OutputId, TypeId)>;
 
     fn create_node_task(
-        &self,
+        &mut self,
     ) -> (
         Box<dyn DynNodeTask>,
         VecMap<[(OutputId, ConnectionHandle); 4]>,
@@ -120,7 +120,7 @@ impl<T: PipelineNode> DynPipelineNode for T {
     }
 
     fn create_node_task(
-        &self,
+        &mut self,
     ) -> (
         Box<dyn DynNodeTask>,
         VecMap<[(OutputId, ConnectionHandle); 4]>,

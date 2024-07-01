@@ -32,16 +32,16 @@ impl PipelineExecutor {
         }
     }
 
-    pub fn update(&mut self, pipeline: &Pipeline) {
+    pub fn update(&mut self, pipeline: &mut Pipeline) {
         // Deleted nodes
         self.runners.retain(|id, _| pipeline.nodes.contains_key(id));
 
         // New nodes
-        for (node_id, node) in &pipeline.nodes {
+        for (node_id, node) in &mut pipeline.nodes {
             if !self.runners.contains_key(node_id) {
                 self.runners.insert(
                     *node_id,
-                    RwLock::new(NodeTaskRunner::from_node(node.as_ref())),
+                    RwLock::new(NodeTaskRunner::from_node(node.as_mut())),
                 );
             }
         }
@@ -74,7 +74,7 @@ struct NodeTaskRunner {
 }
 
 impl NodeTaskRunner {
-    pub fn from_node(node: &dyn DynPipelineNode) -> Self {
+    pub fn from_node(node: &mut dyn DynPipelineNode) -> Self {
         let (task, output_handles, invalidator) = node.create_node_task();
 
         let (control_tx, control_rx) = mpsc::unbounded_channel();

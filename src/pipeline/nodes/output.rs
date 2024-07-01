@@ -1,7 +1,11 @@
 use std::{path::PathBuf, sync::Arc};
 
 use anyhow::anyhow;
-use tokio::{fs, io::AsyncWriteExt, sync::Notify};
+use tokio::{
+    fs,
+    io::AsyncWriteExt,
+    sync::{watch, Notify},
+};
 
 use crate::queue_channel::error::RecvError;
 
@@ -16,6 +20,8 @@ pub struct Node {
     pub notify: Arc<Notify>,
 
     pub input: NodeInput<()>,
+
+    pub progress_rx: Option<watch::Receiver<Option<f32>>>,
 }
 
 impl Default for Node {
@@ -25,6 +31,7 @@ impl Default for Node {
             input_type: PipelineDataType::RawMScan,
             input: NodeInput::default(),
             notify: Arc::new(Notify::new()),
+            progress_rx: None,
         }
     }
 }
@@ -49,10 +56,15 @@ impl PipelineNode for Node {
         std::iter::once((InputIdSingle, self.input.connection()))
     }
 
-    fn create_node_task(&self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>) {
+    fn create_node_task(&mut self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>) {
+        let (progress_tx, progress_rx) = watch::channel(None);
+
+        self.progress_rx = Some(progress_rx);
+
         builder.task(Task {
             path: self.path.clone(),
             notifier: self.notify.clone(),
+            progress_tx,
             input: match self.input_type {
                 PipelineDataType::RawMScan => TaskInputType::RawMScan(TaskInput::default()),
                 PipelineDataType::DataVector => TaskInputType::DataVector(TaskInput::default()),
@@ -86,11 +98,17 @@ struct Task {
     notifier: Arc<Notify>,
 
     input: TaskInputType,
+
+    progress_tx: watch::Sender<Option<f32>>,
 }
 
 impl NodeTask for Task {
     type InputId = InputIdSingle;
     type PipelineNode = Node;
+
+    fn invalidate(&mut self, _cause: InvalidationCause) {
+        let _ = self.progress_tx.send(None);
+    }
 
     fn connect(&mut self, _input_id: Self::InputId, input: &mut ConnectionHandle) {
         let mut resulting = None;
@@ -141,15 +159,19 @@ impl NodeTask for Task {
 
         match &mut self.input {
             TaskInputType::RawMScan(input) => {
+                let mut file = fs::File::create(&self.path).await?;
+
                 let Some(res) = input.request(requests::RawMScan).await else {
                     return Ok(());
                 };
 
-                let mut file = fs::File::create(&self.path).await?;
-
                 let Some(mut rx) = res.data.subscribe() else {
                     return Err(anyhow!("Failed to subscribe to RawMScan"));
                 };
+
+                let _ = self.progress_tx.send(Some(0.0));
+
+                let mut a_scan_count = 0;
 
                 loop {
                     let scan = match rx.recv().await {
@@ -159,7 +181,13 @@ impl NodeTask for Task {
                     };
 
                     file.write_all(scan.as_u8_slice()).await?;
+
+                    a_scan_count += scan.ncols();
+                    let _ = self
+                        .progress_tx
+                        .send(Some(a_scan_count as f32 / res.a_scan_count as f32));
                 }
+                let _ = self.progress_tx.send(None);
             }
             TaskInputType::DataVector(input) => {
                 let Some(data) = input.request(requests::VectorData).await else {
@@ -171,6 +199,8 @@ impl NodeTask for Task {
                 file.write_all(data.as_u8_slice()).await?;
             }
             TaskInputType::MScan(input) => {
+                let mut file = fs::File::create(&self.path).await?;
+
                 let Some(res) = input.request(requests::MScan).await else {
                     return Ok(());
                 };
@@ -179,7 +209,9 @@ impl NodeTask for Task {
                     return Err(anyhow!("Failed to subscribe to RawMScan"));
                 };
 
-                let mut file = fs::File::create(&self.path).await?;
+                let _ = self.progress_tx.send(Some(0.0));
+
+                let mut a_scan_count = 0;
 
                 loop {
                     let scan = match rx.recv().await {
@@ -189,7 +221,13 @@ impl NodeTask for Task {
                     };
 
                     file.write_all(scan.as_u8_slice()).await?;
+
+                    a_scan_count += scan.ncols();
+                    let _ = self
+                        .progress_tx
+                        .send(Some(a_scan_count as f32 / res.a_scan_count as f32));
                 }
+                let _ = self.progress_tx.send(None);
             }
         }
 

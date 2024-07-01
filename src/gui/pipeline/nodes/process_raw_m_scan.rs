@@ -1,4 +1,4 @@
-use egui::{Color32, DragValue};
+use egui::{Color32, DragValue, ProgressBar};
 
 use crate::pipeline::nodes::process_raw_m_scan::*;
 
@@ -75,5 +75,10 @@ impl EditNode for Node {
                 .clamp_range(0.0..=f64::INFINITY)
                 .prefix("Factor: "),
         );
+
+        if let Some(progress) = self.progress_rx.as_ref().and_then(|rx| rx.borrow().clone()) {
+            ui.add(ProgressBar::new(progress).rounding(3.0));
+            ui.ctx().request_repaint();
+        }
     }
 }

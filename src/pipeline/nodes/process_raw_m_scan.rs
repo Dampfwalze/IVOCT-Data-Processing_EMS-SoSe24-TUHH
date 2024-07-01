@@ -1,13 +1,10 @@
-use std::{
-    io::{stdout, Write},
-    ops::Range,
-    sync::Arc,
-};
+use std::{ops::Range, sync::Arc};
 
 use futures::FutureExt;
 use nalgebra::{DMatrix, DVector, DVectorView};
 use rayon::prelude::*;
 use rustfft::{num_complex::Complex32, FftPlanner};
+use tokio::sync::watch;
 
 use crate::{
     pipeline::types::{DataMatrix, DataType},
@@ -34,6 +31,8 @@ impl_enum_from_into_id_types!(InputId, [graph::InputId], {
 pub struct Node {
     pub factor: f64,
 
+    pub progress_rx: Option<watch::Receiver<Option<f32>>>,
+
     pub raw_scan: NodeInput<()>,
     pub offset: NodeInput<()>,
     pub chirp: NodeInput<()>,
@@ -43,6 +42,7 @@ impl Default for Node {
     fn default() -> Self {
         Self {
             factor: 540.0,
+            progress_rx: None,
             raw_scan: NodeInput::default(),
             offset: NodeInput::default(),
             chirp: NodeInput::default(),
@@ -71,11 +71,16 @@ impl PipelineNode for Node {
         Some((OutputIdSingle, PipelineDataType::MScan))
     }
 
-    fn create_node_task(&self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>) {
+    fn create_node_task(&mut self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>) {
         let m_scan_out = builder.output(OutputIdSingle);
+
+        let (progress_tx, progress_rx) = watch::channel(None);
+
+        self.progress_rx = Some(progress_rx);
 
         builder.task(Task {
             factor: self.factor,
+            progress_tx,
             m_scan_out,
             raw_scan_in: TaskInput::default(),
             offset_in: TaskInput::default(),
@@ -88,6 +93,8 @@ impl PipelineNode for Node {
 
 struct Task {
     factor: f64,
+
+    progress_tx: watch::Sender<Option<f32>>,
 
     m_scan_out: TaskOutput<requests::MScan>,
 
@@ -116,6 +123,10 @@ impl NodeTask for Task {
         }
     }
 
+    fn invalidate(&mut self, _cause: InvalidationCause) {
+        let _ = self.progress_tx.send(None);
+    }
+
     async fn run(&mut self) -> anyhow::Result<()> {
         let _req = self.m_scan_out.receive().await;
 
@@ -124,6 +135,8 @@ impl NodeTask for Task {
         };
 
         if let Some(mut raw_scan) = raw_res.data.subscribe() {
+            let _ = self.progress_tx.send(Some(0.0));
+
             let offset = self.offset_in.request(requests::VectorData);
             let chirp = self.chirp_in.request(requests::VectorData);
 
@@ -146,8 +159,7 @@ impl NodeTask for Task {
             });
             self.m_scan_out.receive().now_or_never();
 
-            print!("Processing RawMScan ");
-            stdout().flush()?;
+            let mut processed_a_scans = 0;
 
             loop {
                 let raw_scan = match raw_scan.recv().await {
@@ -171,13 +183,15 @@ impl NodeTask for Task {
                 })
                 .await?;
 
-                print!(".");
-                stdout().flush()?;
+                processed_a_scans += m_scan.ncols();
+                let _ = self
+                    .progress_tx
+                    .send(Some(processed_a_scans as f32 / raw_res.a_scan_count as f32));
 
                 tx.send(Arc::new(DataMatrix::F32(m_scan)));
             }
 
-            println!(" Done");
+            let _ = self.progress_tx.send(None);
         }
 
         Ok(())

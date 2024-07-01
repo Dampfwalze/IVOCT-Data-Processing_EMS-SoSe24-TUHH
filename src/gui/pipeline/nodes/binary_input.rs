@@ -1,6 +1,6 @@
 use core::fmt;
 
-use egui::DragValue;
+use egui::{DragValue, ProgressBar};
 
 use super::prelude::*;
 
@@ -87,6 +87,11 @@ impl EditNode for Node {
                     .prefix("A Scan Length: ")
                     .clamp_range(1..=usize::MAX),
             );
+        }
+
+        if let Some(progress) = self.progress_rx.as_ref().and_then(|rx| rx.borrow().clone()) {
+            ui.add(ProgressBar::new(progress).rounding(3.0));
+            ui.ctx().request_repaint();
         }
     }
 }

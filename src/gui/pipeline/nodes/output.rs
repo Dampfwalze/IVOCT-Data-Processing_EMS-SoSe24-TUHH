@@ -1,4 +1,4 @@
-use egui::Color32;
+use egui::{Color32, ProgressBar};
 
 use crate::{gui::widgets::PathInputAction, pipeline::nodes::output::*};
 
@@ -45,6 +45,11 @@ impl EditNode for Node {
 
         if ui.button("Save").clicked() {
             self.save();
+        }
+
+        if let Some(progress) = self.progress_rx.as_ref().and_then(|rx| rx.borrow().clone()) {
+            ui.add(ProgressBar::new(progress).rounding(3.0));
+            ui.ctx().request_repaint();
         }
     }
 }
