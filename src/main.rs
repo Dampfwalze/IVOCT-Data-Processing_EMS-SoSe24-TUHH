@@ -1,4 +1,5 @@
 mod app;
+mod cache;
 mod gui;
 #[allow(unused)]
 mod node_graph;
@@ -6,6 +7,8 @@ mod pipeline;
 #[allow(unused)]
 mod queue_channel;
 mod view;
+
+use std::sync::Arc;
 
 use app::*;
 
@@ -17,8 +20,21 @@ async fn main() {
             renderer: eframe::Renderer::Wgpu,
             hardware_acceleration: eframe::HardwareAcceleration::Preferred,
             wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
-                supported_backends: eframe::wgpu::Backends::PRIMARY,
-                power_preference: eframe::wgpu::PowerPreference::HighPerformance,
+                supported_backends: wgpu::Backends::PRIMARY,
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                device_descriptor: Arc::new(|_adapter| wgpu::DeviceDescriptor {
+                    label: Some("egui wgpu device"),
+                    required_features: wgpu::Features::TEXTURE_BINDING_ARRAY
+                        | wgpu::Features::PARTIALLY_BOUND_BINDING_ARRAY
+                        | wgpu::Features::PUSH_CONSTANTS
+                        | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
+                    required_limits: wgpu::Limits {
+                        max_texture_dimension_2d: 12000,
+                        max_sampled_textures_per_shader_stage: 100,
+                        max_push_constant_size: 4,
+                        ..Default::default()
+                    },
+                }),
                 ..Default::default()
             },
             ..Default::default()

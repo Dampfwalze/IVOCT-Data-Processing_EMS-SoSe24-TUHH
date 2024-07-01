@@ -17,7 +17,12 @@ pub struct View {
 impl DataView for View {
     type InputId = InputIdSingle;
 
-    fn from_node_output(node_output: &NodeOutput, _pipeline: &Pipeline) -> Option<Self> {
+    fn from_node_output(
+        node_output: &NodeOutput,
+        _pipeline: &Pipeline,
+        _cache: &Cache,
+        _render_state: &RenderState,
+    ) -> Option<Self> {
         if node_output.type_id == PipelineDataType::DataVector.into() {
             Some(Self {
                 input: *node_output,
@@ -103,7 +108,7 @@ impl DataViewTask for Task {
         self.input.disconnect();
     }
 
-    fn invalidate(&mut self) {
+    fn invalidate(&mut self, _cause: InvalidationCause) {
         self.data_tx.send_if_modified(|v| match v {
             Some(_) => {
                 *v = None;

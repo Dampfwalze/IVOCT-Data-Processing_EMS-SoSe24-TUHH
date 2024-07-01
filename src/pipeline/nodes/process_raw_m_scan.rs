@@ -67,7 +67,7 @@ impl PipelineNode for Node {
         self.factor != other.factor
     }
 
-    fn get_output_id_for_view_request(&self) -> Option<(OutputIdSingle, PipelineDataType)> {
+    fn get_output_id_for_view_request(&self) -> Option<(OutputIdSingle, impl Into<TypeId>)> {
         Some((OutputIdSingle, PipelineDataType::MScan))
     }
 
@@ -116,16 +116,14 @@ impl NodeTask for Task {
         }
     }
 
-    fn invalidate(&mut self) {
-        println!("Invalidated ProcessRawMScanNodeTask");
-    }
-
     async fn run(&mut self) -> anyhow::Result<()> {
         let _req = self.m_scan_out.receive().await;
 
-        let raw_scan = self.raw_scan_in.request(requests::RawMScan).await;
+        let Some(raw_res) = self.raw_scan_in.request(requests::RawMScan).await else {
+            return Ok(());
+        };
 
-        if let Some(mut raw_scan) = raw_scan.map(|r| r.subscribe()).flatten() {
+        if let Some(mut raw_scan) = raw_res.data.subscribe() {
             let offset = self.offset_in.request(requests::VectorData);
             let chirp = self.chirp_in.request(requests::VectorData);
 
@@ -139,9 +137,13 @@ impl NodeTask for Task {
             let offset = Arc::new(offset);
             let chirp = Arc::new(chirp);
 
-            let (res, tx) = requests::StreamedResponse::new(5);
+            let (res, tx) = requests::StreamedResponse::new(100);
 
-            self.m_scan_out.respond(res);
+            self.m_scan_out.respond(requests::MScanResponse {
+                data: res,
+                a_scan_count: raw_res.a_scan_count,
+                a_scan_samples: raw_res.a_scan_samples / 2,
+            });
             self.m_scan_out.receive().now_or_never();
 
             print!("Processing RawMScan ");
@@ -231,23 +233,28 @@ fn pre_process_raw_m_scan(
     let mut planner = FftPlanner::<f32>::new();
     let fft = planner.plan_fft_forward(a_scan_samples);
 
-    raw_scan.par_column_iter_mut().for_each(|mut c| {
-        let mut buffer = c
-            .iter()
-            .map(|x| Complex32 { re: *x, im: 0.0 })
-            .collect::<Vec<_>>();
-        fft.process(&mut buffer);
-        c.copy_from(&DVector::from_iterator(
-            a_scan_samples,
-            buffer.iter().map(|x| x.norm()),
-        ));
+    let mut fft_out = DMatrix::zeros(a_scan_samples / 2, raw_scan.ncols());
 
-        for x in c.iter_mut() {
-            *x = 20.0 * x.ln();
-        }
-    });
+    fft_out
+        .par_column_iter_mut()
+        .zip(raw_scan.par_column_iter())
+        .for_each(|(mut out_c, c)| {
+            let mut buffer = c
+                .iter()
+                .map(|x| Complex32 { re: *x, im: 0.0 })
+                .collect::<Vec<_>>();
+            fft.process(&mut buffer);
+            out_c.copy_from(&DVector::from_iterator(
+                a_scan_samples / 2,
+                buffer.iter().take(a_scan_samples / 2).map(|x| x.norm()),
+            ));
 
-    raw_scan
+            for x in out_c.iter_mut() {
+                *x = 20.0 * x.ln();
+            }
+        });
+
+    fft_out
 }
 
 fn hann(x: f32) -> f32 {

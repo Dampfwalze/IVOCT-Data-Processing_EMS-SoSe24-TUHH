@@ -1,8 +1,12 @@
 pub mod data_vector;
+pub mod m_scan;
 
-use std::any;
+use std::any::{self, Any};
+
+use eframe::egui_wgpu::RenderState;
 
 use crate::{
+    cache::Cache,
     node_graph::{InputId, NodeOutput},
     pipeline::Pipeline,
 };
@@ -12,13 +16,16 @@ use super::execution::{DataViewTask, DynDataViewTask};
 #[allow(unused_imports)]
 mod prelude {
     pub(crate) use crate::{
+        cache::Cache,
         node_graph::{InputIdSingle, NodeId, NodeOutput, TypeId},
         pipeline::{
-            execution::{ConnectionHandle, Request, TaskInput},
+            execution::{ConnectionHandle, InvalidationCause, Request, TaskInput},
             requests, types, Pipeline, PipelineDataType,
         },
         view::execution::DataViewTask,
     };
+
+    pub(crate) use eframe::egui_wgpu::RenderState;
 
     pub(crate) use super::{DataView, Existence};
 
@@ -40,7 +47,22 @@ pub enum Existence {
 pub trait DataView: Send + Sync + Clone + 'static {
     type InputId: From<InputId> + Into<InputId>;
 
-    fn from_node_output(node_output: &NodeOutput, pipeline: &Pipeline) -> Option<Self>
+    fn init_wgpu(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target_format: &wgpu::TextureFormat,
+    ) -> impl Any + Send + Sync + 'static {
+        let _ = device;
+        let _ = queue;
+        let _ = target_format;
+    }
+
+    fn from_node_output(
+        node_output: &NodeOutput,
+        pipeline: &Pipeline,
+        cache: &Cache,
+        render_state: &RenderState,
+    ) -> Option<Self>
     where
         Self: Sized;
 

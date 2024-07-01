@@ -13,13 +13,17 @@ pub trait NodeTask: Send + Sync + 'static {
     type InputId: From<InputId> + Into<InputId>;
     type PipelineNode: PipelineNode;
 
-    fn sync_node(&mut self, _node: &Self::PipelineNode) {}
+    fn sync_node(&mut self, node: &Self::PipelineNode) {
+        let _ = node;
+    }
 
     fn connect(&mut self, input_id: Self::InputId, input: &mut ConnectionHandle);
 
     fn disconnect(&mut self, input_id: Self::InputId);
 
-    fn invalidate(&mut self) {}
+    fn invalidate(&mut self, cause: InvalidationCause) {
+        let _ = cause;
+    }
 
     fn run(&mut self) -> impl Future<Output = anyhow::Result<()>> + Send;
 }
@@ -31,7 +35,7 @@ pub trait DynNodeTask: Send + Sync {
 
     fn disconnect(&mut self, input_id: InputId);
 
-    fn invalidate(&mut self);
+    fn invalidate(&mut self, cause: InvalidationCause);
 
     fn run(&mut self) -> BoxFuture<'_, anyhow::Result<()>>;
 }
@@ -53,13 +57,20 @@ impl<T: NodeTask + Send + Sync> DynNodeTask for T {
         self.disconnect(input_id.into())
     }
 
-    fn invalidate(&mut self) {
-        self.invalidate()
+    fn invalidate(&mut self, cause: InvalidationCause) {
+        self.invalidate(cause)
     }
 
     fn run(&mut self) -> BoxFuture<'_, anyhow::Result<()>> {
         Box::pin(self.run())
     }
+}
+
+pub enum InvalidationCause {
+    Connected,
+    Disconnected,
+    Synced,
+    InputInvalidated,
 }
 
 pub trait NodeTaskBuilder {

@@ -20,7 +20,9 @@ use super::execution::{
 #[allow(unused_imports)]
 mod prelude {
     pub(crate) use crate::pipeline::{
-        execution::{ConnectionHandle, NodeTask, NodeTaskBuilder, TaskInput, TaskOutput},
+        execution::{
+            ConnectionHandle, InvalidationCause, NodeTask, NodeTaskBuilder, TaskInput, TaskOutput,
+        },
         requests, PipelineDataType,
     };
 

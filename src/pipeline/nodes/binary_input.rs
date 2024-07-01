@@ -84,7 +84,7 @@ impl PipelineNode for Node {
             || self.data_type != other.data_type
     }
 
-    fn get_output_id_for_view_request(&self) -> Option<(OutputId, PipelineDataType)> {
+    fn get_output_id_for_view_request(&self) -> Option<(OutputId, impl Into<TypeId>)> {
         Some((self.input_type, self.input_type.data_type()))
     }
 
@@ -176,7 +176,13 @@ impl Task {
 
         let (output, tx) = requests::StreamedResponse::new(200);
 
-        self.raw_scan_out.respond(output);
+        self.raw_scan_out.respond(requests::RawMScanResponse {
+            data: output,
+            a_scan_samples: self.a_scan_length,
+            a_scan_count: file.metadata().await?.len() as usize
+                / self.a_scan_length as usize
+                / self.data_type.size(),
+        });
 
         self.raw_scan_out.receive().now_or_never();
 

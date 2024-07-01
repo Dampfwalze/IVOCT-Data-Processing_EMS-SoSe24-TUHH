@@ -1,6 +1,7 @@
 use std::mem;
 
 use crate::{
+    cache::Cache,
     gui::{
         dock_state::{DockState, TabType},
         node_graph::{NodeGraphEditState, NodeGraphEditor},
@@ -8,7 +9,10 @@ use crate::{
     node_graph::NodeId,
     pipeline,
     view::{
-        execution::executor::ViewsExecutor, views, views_manager::DataViewsManager, DataViewsState,
+        execution::executor::ViewsExecutor,
+        views,
+        views_manager::{DataViewsManager, DataViewsManagerBuilder},
+        DataViewsState,
     },
 };
 
@@ -23,26 +27,34 @@ pub struct IVOCTTestApp {
 
     dock_state: DockState,
 
+    cache: Cache,
+
     interacted_node: Option<NodeId>,
 }
 
 impl IVOCTTestApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> IVOCTTestApp {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> IVOCTTestApp {
         IVOCTTestApp {
             pipeline: pipeline::Pipeline::new(),
             pipeline_edit_state: NodeGraphEditState::new(),
             pipeline_executor: pipeline::PipelineExecutor::new(),
             data_views_state: DataViewsState::new(),
-            data_views_manager: DataViewsManager::new().with_view::<views::data_vector::View>(),
+            data_views_manager: DataViewsManagerBuilder::new(
+                &cc.wgpu_render_state.as_ref().unwrap(),
+            )
+            .with_view::<views::data_vector::View>()
+            .with_view::<views::m_scan::View>()
+            .build(),
             data_views_executor: ViewsExecutor::new(),
             dock_state: DockState::new(),
+            cache: Cache::new(),
             interacted_node: None,
         }
     }
 }
 
 impl eframe::App for IVOCTTestApp {
-    fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+    fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.interacted_node = None;
 
         let mut dock_state = mem::replace(&mut self.dock_state, DockState::new());
@@ -58,6 +70,8 @@ impl eframe::App for IVOCTTestApp {
             &mut self.pipeline,
             &mut self.dock_state,
             self.interacted_node,
+            &self.cache,
+            frame.wgpu_render_state().unwrap(),
             ctx.input(|i| i.modifiers.ctrl),
         );
 

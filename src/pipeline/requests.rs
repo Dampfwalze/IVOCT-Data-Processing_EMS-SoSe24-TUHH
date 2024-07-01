@@ -18,10 +18,10 @@ pub struct MScan;
 //MARK: Implementations
 
 impl Request for RawMScan {
-    type Response = StreamedResponse<Arc<DataMatrix>>;
+    type Response = RawMScanResponse;
 
     fn is_response_valid(&self, response: &Self::Response) -> bool {
-        !response.is_lagged()
+        !response.data.is_lagged()
     }
 }
 
@@ -30,11 +30,27 @@ impl Request for VectorData {
 }
 
 impl Request for MScan {
-    type Response = StreamedResponse<Arc<DataMatrix>>;
+    type Response = MScanResponse;
 
     fn is_response_valid(&self, response: &Self::Response) -> bool {
-        !response.is_lagged()
+        !response.data.is_lagged()
     }
+}
+
+// MARK: Responses
+
+#[derive(Debug, Clone)]
+pub struct RawMScanResponse {
+    pub data: StreamedResponse<Arc<DataMatrix>>,
+    pub a_scan_samples: usize,
+    pub a_scan_count: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct MScanResponse {
+    pub data: StreamedResponse<Arc<DataMatrix>>,
+    pub a_scan_samples: usize,
+    pub a_scan_count: usize,
 }
 
 // MARK: StreamedResponse

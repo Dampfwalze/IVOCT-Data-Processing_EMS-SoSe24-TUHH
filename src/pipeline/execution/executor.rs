@@ -14,8 +14,8 @@ use crate::{
 };
 
 use super::{
-    ConnectionHandle, DynNodeTask, InvalidationNotifier, Invalidator, NodeTask, NodeTaskBuilder,
-    Request, TaskOutput,
+    ConnectionHandle, DynNodeTask, InvalidationCause, InvalidationNotifier, Invalidator, NodeTask,
+    NodeTaskBuilder, Request, TaskOutput,
 };
 
 // MARK: PipelineExecutor
@@ -227,22 +227,23 @@ impl RunningNodeTask {
 
                             if connection.did_connect() {
                                 self.input_connections.push((input_id, connection.get_invalidation_notifier()));
+                                self.invalidate(InvalidationCause::Connected);
                             }
                         }
                         Some(ControlMsg::Disconnect(input_id)) => {
                             self.node_task.disconnect(input_id);
                             self.input_connections.retain(|(id, _)| *id != input_id);
+                            self.invalidate(InvalidationCause::Disconnected);
                         }
                         None => break,
                     };
-                    self.invalidate();
                 }
                 _ = self.sync_rx.changed() => {
                     self.node_task.sync_node(self.sync_rx.borrow().as_ref());
-                    self.invalidate();
+                    self.invalidate(InvalidationCause::Synced);
                 }
                 _ = Self::on_invalidation(&mut self.input_connections) => {
-                    self.invalidate();
+                    self.invalidate(InvalidationCause::InputInvalidated);
                 }
                 is_error = Self::run_task(self.error_on_last_run, self.node_task.as_mut()) => {
                     self.error_on_last_run = is_error;
@@ -278,12 +279,12 @@ impl RunningNodeTask {
         is_error
     }
 
-    fn invalidate(&mut self) {
+    fn invalidate(&mut self, cause: InvalidationCause) {
         self.output_invalidator
             .iter()
             .for_each(Invalidator::invalidate);
 
-        self.node_task.invalidate();
+        self.node_task.invalidate(cause);
 
         self.error_on_last_run = false;
     }

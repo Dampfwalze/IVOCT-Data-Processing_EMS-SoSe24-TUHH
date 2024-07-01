@@ -5,13 +5,18 @@
         "eframe",
         "egui",
         "hann",
+        "hasher",
         "IVOCT",
+        "Multisample",
+        "multisampled",
+        "multiview",
         "nalgebra",
         "ncols",
         "nrows",
         "repr",
         "rustfft",
         "thiserror",
-        "wgpu"
+        "wgpu",
+        "wgsl"
     ]
 }

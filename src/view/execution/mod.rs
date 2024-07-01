@@ -2,7 +2,10 @@ pub mod executor;
 
 use futures::{future::BoxFuture, Future};
 
-use crate::{node_graph::InputId, pipeline::execution::ConnectionHandle};
+use crate::{
+    node_graph::InputId,
+    pipeline::execution::{ConnectionHandle, InvalidationCause},
+};
 
 use super::views::{DataView, DynDataView};
 
@@ -10,13 +13,17 @@ pub trait DataViewTask: Send + Sync + 'static {
     type InputId: From<InputId> + Into<InputId>;
     type DataView: DataView;
 
-    fn sync_node(&mut self, _node: &Self::DataView) {}
+    fn sync_view(&mut self, view: &Self::DataView) {
+        let _ = view;
+    }
 
     fn connect(&mut self, input_id: Self::InputId, input: &mut ConnectionHandle);
 
     fn disconnect(&mut self, input_id: Self::InputId);
 
-    fn invalidate(&mut self) {}
+    fn invalidate(&mut self, cause: InvalidationCause) {
+        let _ = cause;
+    }
 
     fn run(&mut self) -> impl Future<Output = anyhow::Result<()>> + Send;
 }
@@ -28,7 +35,7 @@ pub trait DynDataViewTask: Send + Sync {
 
     fn disconnect(&mut self, input_id: InputId);
 
-    fn invalidate(&mut self);
+    fn invalidate(&mut self, cause: InvalidationCause);
 
     fn run(&mut self) -> BoxFuture<'_, anyhow::Result<()>>;
 }
@@ -39,7 +46,7 @@ impl<T: DataViewTask> DynDataViewTask for T {
             .as_any()
             .downcast_ref::<T::DataView>()
             .expect("node should be of type T::DataView");
-        self.sync_node(node);
+        self.sync_view(node);
     }
 
     fn connect(&mut self, input_id: InputId, input: &mut ConnectionHandle) {
@@ -50,8 +57,8 @@ impl<T: DataViewTask> DynDataViewTask for T {
         self.disconnect(input_id.into())
     }
 
-    fn invalidate(&mut self) {
-        self.invalidate()
+    fn invalidate(&mut self, cause: InvalidationCause) {
+        self.invalidate(cause)
     }
 
     fn run(&mut self) -> BoxFuture<'_, anyhow::Result<()>> {

@@ -8,7 +8,7 @@ use vec_collections::{AbstractVecMap, VecMap};
 use crate::{
     node_graph::{InputId, NodeOutput},
     pipeline::{
-        execution::{ConnectionHandle, InvalidationNotifier},
+        execution::{ConnectionHandle, InvalidationCause, InvalidationNotifier},
         PipelineExecutor,
     },
     view::{views::DynDataView, DataViewsState, ViewId},
@@ -190,22 +190,23 @@ impl RunningViewTask {
 
                             if connection.did_connect() {
                                 self.input_connections.push((input_id, connection.get_invalidation_notifier()));
+                                self.invalidate(InvalidationCause::Connected);
                             }
                         }
                         Some(ControlMsg::Disconnect(input_id)) => {
                             self.task.disconnect(input_id);
                             self.input_connections.retain(|(id, _)| *id != input_id);
+                            self.invalidate(InvalidationCause::Disconnected);
                         }
                         None => break,
                     };
-                    self.invalidate();
                 }
                 _ = self.sync_rx.changed() => {
                     self.task.sync_view(self.sync_rx.borrow().as_ref());
-                    self.invalidate();
+                    self.invalidate(InvalidationCause::Synced);
                 }
                 _ = Self::on_invalidation(&mut self.input_connections) => {
-                    self.invalidate();
+                    self.invalidate(InvalidationCause::InputInvalidated);
                 }
                 is_error = Self::run_task(self.error_on_last_run, self.task.as_mut()) => {
                     self.error_on_last_run = is_error;
@@ -241,8 +242,8 @@ impl RunningViewTask {
         is_error
     }
 
-    fn invalidate(&mut self) {
-        self.task.invalidate();
+    fn invalidate(&mut self, cause: InvalidationCause) {
+        self.task.invalidate(cause);
 
         self.error_on_last_run = false;
     }

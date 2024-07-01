@@ -1,4 +1,10 @@
+use std::any::{Any, TypeId};
+
+use eframe::egui_wgpu::RenderState;
+use type_map::concurrent::KvPair;
+
 use crate::{
+    cache::Cache,
     gui::dock_state::{DockState, TabType},
     node_graph::{NodeId, NodeOutput},
     pipeline::{self, Pipeline},
@@ -9,32 +15,66 @@ use super::{
     DataView, DataViewsState, ViewId,
 };
 
-pub struct DataViewsManager {
-    view_factories: Vec<Box<dyn Fn(&NodeOutput, &Pipeline) -> Option<Box<dyn DynDataView>>>>,
-    last_focused_view: Option<ViewId>,
+pub struct DataViewsManagerBuilder<'a> {
+    view_factories: Vec<
+        Box<dyn Fn(&NodeOutput, &Pipeline, &Cache, &RenderState) -> Option<Box<dyn DynDataView>>>,
+    >,
+    wgpu_state: &'a RenderState,
 }
 
-impl DataViewsManager {
-    pub fn new() -> Self {
+impl<'a> DataViewsManagerBuilder<'a> {
+    pub fn new(wgpu_state: &'a RenderState) -> Self {
         Self {
             view_factories: Vec::new(),
-            last_focused_view: None,
+            wgpu_state,
         }
     }
 
     pub fn with_view<T: DataView>(mut self) -> Self {
-        self.view_factories.push(Box::new(|o, p| {
-            T::from_node_output(o, p).map(|v| Box::new(v) as Box<dyn DynDataView>)
+        let result = T::init_wgpu(
+            self.wgpu_state.device.as_ref(),
+            self.wgpu_state.queue.as_ref(),
+            &self.wgpu_state.target_format,
+        );
+
+        if result.type_id() != TypeId::of::<()>() {
+            self.wgpu_state
+                .renderer
+                .write()
+                .callback_resources
+                .insert_kv_pair(KvPair::new(result));
+        }
+
+        self.view_factories.push(Box::new(|o, p, c, r| {
+            T::from_node_output(o, p, c, r).map(|v| Box::new(v) as Box<dyn DynDataView>)
         }));
         self
     }
 
+    pub fn build(self) -> DataViewsManager {
+        DataViewsManager {
+            view_factories: self.view_factories,
+            last_focused_view: None,
+        }
+    }
+}
+
+pub struct DataViewsManager {
+    view_factories: Vec<
+        Box<dyn Fn(&NodeOutput, &Pipeline, &Cache, &RenderState) -> Option<Box<dyn DynDataView>>>,
+    >,
+    last_focused_view: Option<ViewId>,
+}
+
+impl DataViewsManager {
     pub fn update(
         &mut self,
         state: &mut DataViewsState,
         pipeline: &mut pipeline::Pipeline,
         dock_state: &mut DockState,
         interacted_node: Option<NodeId>,
+        cache: &Cache,
+        render_state: &RenderState,
         ctrl_pressed: bool,
     ) {
         // Remove closed views
@@ -84,13 +124,27 @@ impl DataViewsManager {
             };
 
             if ctrl_pressed {
-                self.create_and_open_view(state, dock_state, &node_output, pipeline);
+                self.create_and_open_view(
+                    state,
+                    dock_state,
+                    &node_output,
+                    pipeline,
+                    cache,
+                    render_state,
+                );
             } else if let Some(view_id) =
                 self.try_connect_view(state, dock_state, node_output, pipeline)
             {
                 dock_state.focus_view(view_id);
             } else {
-                self.create_and_open_view(state, dock_state, &node_output, pipeline);
+                self.create_and_open_view(
+                    state,
+                    dock_state,
+                    &node_output,
+                    pipeline,
+                    cache,
+                    render_state,
+                );
             }
         }
     }
@@ -101,8 +155,10 @@ impl DataViewsManager {
         dock_state: &mut DockState,
         node_output: &NodeOutput,
         pipeline: &Pipeline,
+        cache: &Cache,
+        render_state: &RenderState,
     ) {
-        if let Some(view) = self.create_view(node_output, pipeline) {
+        if let Some(view) = self.create_view(node_output, pipeline, cache, render_state) {
             let view_id = state.add_view(view);
 
             dock_state.add_view_tab(view_id);
@@ -113,9 +169,11 @@ impl DataViewsManager {
         &self,
         node_output: &NodeOutput,
         pipeline: &Pipeline,
+        cache: &Cache,
+        render_state: &RenderState,
     ) -> Option<Box<dyn DynDataView>> {
         for factory in &self.view_factories {
-            if let Some(view) = factory(node_output, pipeline) {
+            if let Some(view) = factory(node_output, pipeline, cache, render_state) {
                 return Some(view);
             }
         }

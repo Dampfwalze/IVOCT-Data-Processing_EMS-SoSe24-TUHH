@@ -235,7 +235,7 @@ impl DataMatrix {
             .zip(matrix.par_column_iter())
             .for_each(|(mut r, x)| {
                 for (r, x) in r.iter_mut().zip(x.iter()) {
-                    *r = num_traits::cast(*x).unwrap();
+                    *r = num_traits::cast(*x).unwrap_or(B::zero());
                 }
             });
 

@@ -147,7 +147,7 @@ impl NodeTask for Task {
 
                 let mut file = fs::File::create(&self.path).await?;
 
-                let Some(mut rx) = res.subscribe() else {
+                let Some(mut rx) = res.data.subscribe() else {
                     return Err(anyhow!("Failed to subscribe to RawMScan"));
                 };
 
@@ -175,7 +175,7 @@ impl NodeTask for Task {
                     return Ok(());
                 };
 
-                let Some(mut rx) = res.subscribe() else {
+                let Some(mut rx) = res.data.subscribe() else {
                     return Err(anyhow!("Failed to subscribe to RawMScan"));
                 };
 
