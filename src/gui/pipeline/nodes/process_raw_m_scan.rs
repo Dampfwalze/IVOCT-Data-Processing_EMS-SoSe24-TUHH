@@ -72,8 +72,14 @@ impl EditNode for Node {
 
         ui.add(
             DragValue::new(&mut self.factor)
-                .clamp_range(0.0..=f64::INFINITY)
+                .clamp_range(1.0..=f64::INFINITY)
                 .prefix("Factor: "),
+        );
+
+        ui.add(
+            DragValue::new(&mut self.rescale_cutoff)
+                .clamp_range(1..=usize::MAX)
+                .prefix("Rescale Cutoff: "),
         );
 
         if let Some(progress) = self.progress_rx.as_ref().and_then(|rx| rx.borrow().clone()) {

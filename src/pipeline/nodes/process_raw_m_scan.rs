@@ -34,6 +34,7 @@ impl_enum_from_into_id_types!(InputId, [graph::InputId], {
 #[derive(Debug, Clone)]
 pub struct Node {
     pub factor: f64,
+    pub rescale_cutoff: usize,
 
     pub progress_rx: Option<watch::Receiver<Option<f32>>>,
 
@@ -46,6 +47,7 @@ impl Default for Node {
     fn default() -> Self {
         Self {
             factor: 540.0,
+            rescale_cutoff: 100,
             progress_rx: None,
             raw_scan: NodeInput::default(),
             offset: NodeInput::default(),
@@ -68,7 +70,7 @@ impl PipelineNode for Node {
     }
 
     fn changed(&self, other: &Self) -> bool {
-        self.factor != other.factor
+        self.factor != other.factor || self.rescale_cutoff != other.rescale_cutoff
     }
 
     fn get_output_id_for_view_request(&self) -> Option<(OutputIdSingle, impl Into<TypeId>)> {
@@ -84,6 +86,7 @@ impl PipelineNode for Node {
 
         builder.task(Task {
             factor: self.factor,
+            rescale_cutoff: self.rescale_cutoff,
             progress_tx,
             m_scan_out,
             raw_scan_in: TaskInput::default(),
@@ -97,6 +100,7 @@ impl PipelineNode for Node {
 
 struct Task {
     factor: f64,
+    rescale_cutoff: usize,
 
     progress_tx: watch::Sender<Option<f32>>,
 
@@ -127,6 +131,11 @@ impl NodeTask for Task {
         }
     }
 
+    fn sync_node(&mut self, node: &Self::PipelineNode) {
+        self.factor = node.factor;
+        self.rescale_cutoff = node.rescale_cutoff;
+    }
+
     fn invalidate(&mut self, _cause: InvalidationCause) {
         let _ = self.progress_tx.send(None);
     }
@@ -147,6 +156,7 @@ impl NodeTask for Task {
             let (offset, chirp) = tokio::join!(offset, chirp);
 
             let factor = self.factor as f32;
+            let rescale_cutoff = self.rescale_cutoff;
 
             let (res, tx) = requests::StreamedResponse::new(100);
 
@@ -197,10 +207,9 @@ impl NodeTask for Task {
                     );
 
                     if shared.lower.is_none() || shared.upper.is_none() {
-                        let (l_lower, l_upper) = find_bounds_par(m_scan.as_slice(), 100);
+                        let (l_lower, l_upper) = find_bounds_par(m_scan.as_slice(), rescale_cutoff);
                         shared.lower = l_lower.last().copied();
                         shared.upper = l_upper.last().copied();
-                        println!("Lower: {:?}, Upper: {:?}", shared.lower, shared.upper);
                     }
 
                     if let (Some(lower), Some(upper)) = (shared.lower, shared.upper) {
