@@ -2,6 +2,7 @@ pub mod binary_input;
 pub mod filter;
 pub mod output;
 pub mod process_raw_m_scan;
+pub mod remove_detector_defect;
 
 use core::fmt;
 use std::any;

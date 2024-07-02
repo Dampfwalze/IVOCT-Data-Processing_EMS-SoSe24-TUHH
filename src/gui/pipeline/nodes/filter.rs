@@ -19,7 +19,9 @@ impl EditNode for Node {
     type InputId = InputIdSingle;
 
     fn name(&self) -> &str {
-        "Filter"
+        match self.filter_type {
+            FilterType::Gaussian => "Gaussian Filter",
+        }
     }
 
     fn color(&self) -> Color32 {
