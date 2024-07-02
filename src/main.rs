@@ -1,5 +1,6 @@
 mod app;
 mod cache;
+mod convolution;
 mod gui;
 #[allow(unused)]
 mod node_graph;

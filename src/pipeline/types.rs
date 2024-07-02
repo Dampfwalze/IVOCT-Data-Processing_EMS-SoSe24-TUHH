@@ -36,6 +36,13 @@ impl DataType {
             DataType::F64 => std::mem::size_of::<f64>(),
         }
     }
+
+    pub fn is_integer(&self) -> bool {
+        matches!(
+            self,
+            DataType::U8 | DataType::U16 | DataType::U32 | DataType::U64
+        )
+    }
 }
 
 // MARK: DataVector

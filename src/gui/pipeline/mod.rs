@@ -36,6 +36,7 @@ impl EditNodeGraph for Pipeline {
             }
             "In Out/Output" => Box::new(output::Node::default()),
             "Process/Process Raw M Scan" => Box::new(process_raw_m_scan::Node::default()),
+            "Process/Filter/Gaussian Filter" => Box::new(filter::Node::gaussian()),
             _ => panic!("Invalid path: {}", path),
         };
 
@@ -50,6 +51,7 @@ impl EditNodeGraph for Pipeline {
             "In Out/Binary Vector Input",
             "In Out/Output",
             "Process/Process Raw M Scan",
+            "Process/Filter/Gaussian Filter",
         ]
     }
 }
