@@ -15,6 +15,7 @@
         "nrows",
         "repr",
         "rustfft",
+        "rustfmt",
         "thiserror",
         "wgpu",
         "wgsl"

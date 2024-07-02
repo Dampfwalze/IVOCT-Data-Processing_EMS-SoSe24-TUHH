@@ -8,6 +8,8 @@ use futures::future;
 use tokio::sync::RwLock;
 use wgpu::{util::DeviceExt, PushConstantRange};
 
+// MARK: View
+
 #[derive(Clone)]
 pub struct View {
     input: NodeOutput,
@@ -120,6 +122,9 @@ impl DataView for View {
         }
     }
 }
+
+// MARK: PaintCallback
+
 struct PaintCallback {
     texture_bind_group: Arc<wgpu::BindGroup>,
     texture_count: usize,
@@ -145,6 +150,8 @@ impl eframe::egui_wgpu::CallbackTrait for PaintCallback {
         render_pass.draw(0..6, 0..1);
     }
 }
+
+// MARK: Task
 
 struct Task {
     input: TaskInput<requests::MScan>,
@@ -227,12 +234,12 @@ impl DataViewTask for Task {
                 continue;
             }
 
-            let data = data.cast_par(types::DataType::U16);
-
             // Upload data to GPU
             let device = self.device.clone();
             let queue = self.queue.clone();
             let texture = tokio::task::spawn_blocking(move || {
+let data = data.cast_rescale_par(types::DataType::U16);
+
                 device.create_texture_with_data(
                     &queue,
                     &wgpu::TextureDescriptor {
@@ -256,7 +263,9 @@ impl DataViewTask for Task {
             .await?;
 
             let mut texture_state = self.textures_state.write();
-            let texture_state = texture_state.as_mut().unwrap();
+            let Some(texture_state) = texture_state.as_mut() else {
+                return Ok(());
+            };
 
             let textures = &mut texture_state.textures;
 
@@ -278,11 +287,16 @@ impl DataViewTask for Task {
             *uploaded = my_uploaded;
         }
 
-        self.textures_state.write().as_mut().unwrap().working = false;
+        self.textures_state
+            .write()
+            .as_mut()
+            .map(|state| state.working = false);
 
         Ok(())
     }
 }
+
+// MARK: TexturesState
 
 #[derive(Default)]
 struct TexturesState {
@@ -292,6 +306,8 @@ struct TexturesState {
     working: bool,
     a_scan_count: usize,
 }
+
+// MARK: SharedResources
 
 struct SharedResources {
     pipeline: wgpu::RenderPipeline,

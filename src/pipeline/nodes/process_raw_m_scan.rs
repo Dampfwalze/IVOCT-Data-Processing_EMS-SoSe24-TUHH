@@ -1,4 +1,8 @@
-use std::{ops::Range, sync::Arc};
+use std::{
+    cmp::Ordering,
+    ops::Range,
+    sync::{Arc, Mutex},
+};
 
 use futures::FutureExt;
 use nalgebra::{DMatrix, DVector, DVectorView};
@@ -144,12 +148,6 @@ impl NodeTask for Task {
 
             let factor = self.factor as f32;
 
-            let offset = offset.map(|o| (*o).clone().cast::<f32>() * factor);
-            let chirp = chirp.map(|c| (*c).clone().cast::<f32>());
-
-            let offset = Arc::new(offset);
-            let chirp = Arc::new(chirp);
-
             let (res, tx) = requests::StreamedResponse::new(100);
 
             self.m_scan_out.respond(requests::MScanResponse {
@@ -161,6 +159,20 @@ impl NodeTask for Task {
 
             let mut processed_a_scans = 0;
 
+            struct Shared {
+                offset: Option<DVector<f32>>,
+                chirp: Option<DVector<f32>>,
+                lower: Option<f32>,
+                upper: Option<f32>,
+            }
+
+            let shared = Arc::new(Mutex::new(Shared {
+                offset: offset.map(|o| (*o).clone().cast::<f32>() * factor),
+                chirp: chirp.map(|c| (*c).clone().cast::<f32>()),
+                lower: None,
+                upper: None,
+            }));
+
             loop {
                 let raw_scan = match raw_scan.recv().await {
                     Ok(raw_scan) => raw_scan,
@@ -168,17 +180,37 @@ impl NodeTask for Task {
                     Err(e) => Err(e)?,
                 };
 
-                let (offset, chirp) = (offset.clone(), chirp.clone());
+                let shared = shared.clone();
 
                 let m_scan = tokio::task::spawn_blocking(move || {
-                    let offset = offset.as_ref().as_ref().map(DVector::as_view);
-                    let chirp = chirp.as_ref().as_ref().map(DVector::as_view);
+                    let mut shared = shared.lock().unwrap();
 
                     let DataMatrix::F32(raw_scan) = raw_scan.cast_par(DataType::F32) else {
                         unreachable!()
                     };
 
-                    let m_scan = pre_process_raw_m_scan(raw_scan, offset, chirp, factor);
+                    let mut m_scan = pre_process_raw_m_scan(
+                        raw_scan,
+                        shared.offset.as_ref().map(DVector::as_view),
+                        shared.chirp.as_ref().map(DVector::as_view),
+                        factor,
+                    );
+
+                    if shared.lower.is_none() || shared.upper.is_none() {
+                        let (l_lower, l_upper) = find_bounds_par(m_scan.as_slice(), 100);
+                        shared.lower = l_lower.last().copied();
+                        shared.upper = l_upper.last().copied();
+                        println!("Lower: {:?}, Upper: {:?}", shared.lower, shared.upper);
+                    }
+
+                    if let (Some(lower), Some(upper)) = (shared.lower, shared.upper) {
+                        m_scan.par_column_iter_mut().for_each(|mut c| {
+                            for x in c.iter_mut() {
+                                *x = (*x - lower) / (upper - lower);
+                            }
+                        });
+                    }
+
                     m_scan
                 })
                 .await?;
@@ -195,6 +227,213 @@ impl NodeTask for Task {
         }
 
         Ok(())
+    }
+}
+
+// MARK: Rescaling
+
+fn find_bounds_par(data: &[f32], nth: usize) -> (Vec<f32>, Vec<f32>) {
+    let upper = Mutex::new(Vec::new());
+    let lower = Mutex::new(Vec::new());
+
+    rayon::scope(|s| {
+        let threads = rayon::current_num_threads();
+        let block_size = (data.len() / threads) + 1;
+
+        for i in 0..threads {
+            let upper = &upper;
+            let lower = &lower;
+            s.spawn(move |_| {
+                let (l_lower, l_upper) = find_bounds(
+                    &data[(i * block_size).min(data.len())..((i + 1) * block_size).min(data.len())],
+                    nth,
+                );
+
+                {
+                    let mut lower = lower.lock().unwrap();
+                    if lower.is_empty() {
+                        *lower = l_lower;
+                    } else {
+                        *lower = merge(&lower, &l_lower, nth, Ordering::Less);
+                    }
+                }
+
+                {
+                    let mut upper = upper.lock().unwrap();
+                    if upper.is_empty() {
+                        *upper = l_upper;
+                    } else {
+                        *upper = merge(&upper, &l_upper, nth, Ordering::Greater);
+                    }
+                }
+            });
+        }
+    });
+
+    (lower.into_inner().unwrap(), upper.into_inner().unwrap())
+}
+
+fn merge(a: &[f32], b: &[f32], nth: usize, ordering: Ordering) -> Vec<f32> {
+    let mut result = Vec::with_capacity(nth);
+
+    let mut a_iter = a.iter();
+    let mut b_iter = b.iter();
+
+    let mut a_val = a_iter.next();
+    let mut b_val = b_iter.next();
+
+    for _ in 0..nth {
+        match (a_val, b_val) {
+            (Some(a), Some(b)) => match a.partial_cmp(b) {
+                Some(o) if o == ordering => {
+                    result.push(*a);
+                    a_val = a_iter.next();
+                }
+                Some(_) => {
+                    result.push(*b);
+                    b_val = b_iter.next();
+                }
+                None => unreachable!("NaN should be filtered out in previous steps"),
+            },
+            (Some(a), None) => {
+                result.push(*a);
+                a_val = a_iter.next();
+            }
+            (None, Some(b)) => {
+                result.push(*b);
+                b_val = b_iter.next();
+            }
+            (None, None) => break,
+        }
+    }
+
+    result
+}
+
+fn find_bounds(data: &[f32], nth: usize) -> (Vec<f32>, Vec<f32>) {
+    let mut lower = Vec::with_capacity(nth);
+    let mut upper = Vec::with_capacity(nth);
+
+    let add_to_vec = |v: f32, vec: &mut Vec<f32>, ordering: Ordering| {
+        if !v.is_normal() && v != 0.0 {
+            return;
+        }
+
+        if vec.len() >= nth && v.partial_cmp(&vec[nth - 1]) == Some(ordering) {
+            vec[nth - 1] = v;
+        } else if vec.len() < nth {
+            vec.push(v);
+        } else {
+            return;
+        }
+
+        if vec.len() == 1 {
+            return;
+        }
+
+        // fix order
+        for i in (0..=vec.len().saturating_sub(2)).rev() {
+            if vec[i + 1].partial_cmp(&vec[i]) == Some(ordering) {
+                vec.swap(i, i + 1);
+            } else {
+                break;
+            }
+        }
+    };
+
+    for d in data {
+        add_to_vec(*d, &mut lower, Ordering::Less);
+        add_to_vec(*d, &mut upper, Ordering::Greater);
+    }
+
+    (lower, upper)
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_find_bounds_1() {
+        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let (lower, upper) = find_bounds(&data, 2);
+
+        assert_eq!(lower, vec![1.0, 2.0]);
+        assert_eq!(upper, vec![5.0, 4.0]);
+    }
+
+    #[test]
+    fn test_find_bounds_2() {
+        let data = vec![3.0, 2.0, 3.0, 4.0, 3.0];
+        let (lower, upper) = find_bounds(&data, 2);
+
+        assert_eq!(lower, vec![2.0, 3.0]);
+        assert_eq!(upper, vec![4.0, 3.0]);
+    }
+
+    #[test]
+    fn test_subnormal() {
+        let data = vec![
+            1.0,
+            2.0,
+            f32::NEG_INFINITY,
+            3.0,
+            4.0,
+            f32::NAN,
+            5.0,
+            f32::INFINITY,
+        ];
+        let (lower, upper) = find_bounds(&data, 2);
+
+        assert_eq!(lower, vec![1.0, 2.0]);
+        assert_eq!(upper, vec![5.0, 4.0]);
+    }
+
+    #[test]
+    fn test_find_bounds_par_works_with_few_data() {
+        let data = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let (lower, upper) = find_bounds_par(&data, 2);
+
+        assert_eq!(lower, vec![1.0, 2.0]);
+        assert_eq!(upper, vec![5.0, 4.0]);
+
+        let data = vec![1.0];
+        let (lower, upper) = find_bounds_par(&data, 2);
+
+        assert_eq!(lower, vec![1.0]);
+        assert_eq!(upper, vec![1.0]);
+
+        let data = vec![];
+        let (lower, upper) = find_bounds_par(&data, 2);
+
+        assert_eq!(lower, vec![]);
+        assert_eq!(upper, vec![]);
+    }
+
+    #[test]
+    fn test_find_bounds_par_works_with_many_data() {
+        let mut data = vec![];
+        for _ in 0..1000 {
+            data.push(pseudo_rand(*data.last().unwrap_or(&532.0)));
+        }
+
+        let (lower, upper) = find_bounds_par(&data, 2);
+
+        let mut sorted = data.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+        assert_eq!(lower, sorted.iter().take(2).copied().collect::<Vec<_>>());
+        assert_eq!(
+            upper,
+            sorted.iter().rev().take(2).copied().collect::<Vec<_>>()
+        );
+    }
+
+    fn pseudo_rand(last: f32) -> f32 {
+        let a = 1664525.0;
+        let c = 1013904223.0;
+        let m = 2_f32.powi(32);
+        (a * last + c) % m
     }
 }
 

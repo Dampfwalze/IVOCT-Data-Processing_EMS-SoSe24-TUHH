@@ -1,6 +1,10 @@
+use std::mem;
+
 use nalgebra::{DMatrix, DMatrixView, DVector, Scalar};
 use rayon::prelude::*;
 use simba::scalar::SubsetOf;
+
+// MARK: DataType
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DataType {
@@ -33,6 +37,8 @@ impl DataType {
         }
     }
 }
+
+// MARK: DataVector
 
 #[derive(Debug, Clone)]
 pub enum DataVector {
@@ -121,6 +127,8 @@ impl DataVector {
     }
 }
 
+// MARK: DataMatrix
+
 #[derive(Debug, Clone)]
 pub enum DataMatrix {
     U8(DMatrix<u8>),
@@ -200,46 +208,48 @@ impl DataMatrix {
 
     pub fn cast_par(&self, data_type: DataType) -> DataMatrix {
         match self {
-            DataMatrix::U8(matrix) => Self::cast_from_matrix_par(data_type, matrix.as_view()),
-            DataMatrix::U16(matrix) => Self::cast_from_matrix_par(data_type, matrix.as_view()),
-            DataMatrix::U32(matrix) => Self::cast_from_matrix_par(data_type, matrix.as_view()),
-            DataMatrix::U64(matrix) => Self::cast_from_matrix_par(data_type, matrix.as_view()),
-            DataMatrix::F32(matrix) => Self::cast_from_matrix_par(data_type, matrix.as_view()),
-            DataMatrix::F64(matrix) => Self::cast_from_matrix_par(data_type, matrix.as_view()),
+            DataMatrix::U8(matrix) => cast_from_matrix_par(data_type, matrix.as_view()),
+            DataMatrix::U16(matrix) => cast_from_matrix_par(data_type, matrix.as_view()),
+            DataMatrix::U32(matrix) => cast_from_matrix_par(data_type, matrix.as_view()),
+            DataMatrix::U64(matrix) => cast_from_matrix_par(data_type, matrix.as_view()),
+            DataMatrix::F32(matrix) => cast_from_matrix_par(data_type, matrix.as_view()),
+            DataMatrix::F64(matrix) => cast_from_matrix_par(data_type, matrix.as_view()),
         }
     }
 
-    fn cast_from_matrix_par<T>(data_type: DataType, matrix: DMatrixView<T>) -> DataMatrix
-    where
-        T: Send + Sync + num_traits::NumCast + num_traits::Zero + nalgebra::Scalar + Copy,
-    {
-        match data_type {
-            DataType::U8 => Self::cast_matrix_par::<_, u8>(matrix).into(),
-            DataType::U16 => Self::cast_matrix_par::<_, u16>(matrix).into(),
-            DataType::U32 => Self::cast_matrix_par::<_, u32>(matrix).into(),
-            DataType::U64 => Self::cast_matrix_par::<_, u64>(matrix).into(),
-            DataType::F32 => Self::cast_matrix_par::<_, f32>(matrix).into(),
-            DataType::F64 => Self::cast_matrix_par::<_, f64>(matrix).into(),
-        }
-    }
-
-    fn cast_matrix_par<A, B>(matrix: DMatrixView<A>) -> DMatrix<B>
-    where
-        A: Send + Sync + num_traits::NumCast + nalgebra::Scalar + Copy,
-        B: Send + Sync + num_traits::NumCast + nalgebra::Scalar + num_traits::Zero,
-    {
-        let mut result = DMatrix::zeros(matrix.nrows(), matrix.ncols());
-
-        result
-            .par_column_iter_mut()
-            .zip(matrix.par_column_iter())
-            .for_each(|(mut r, x)| {
-                for (r, x) in r.iter_mut().zip(x.iter()) {
-                    *r = num_traits::cast(*x).unwrap_or(B::zero());
+    pub fn cast_rescale_par(&self, data_type: DataType) -> DataMatrix {
+        #[rustfmt::skip]
+        macro_rules! impl_cast_rescale_par {
+            (@int $ty:ty, $matrix:expr) => {
+                match data_type {
+                    DataType::U8 => DataMatrix::U8(to_type_matrix_i_to_i_par($matrix.as_view())),
+                    DataType::U16 => DataMatrix::U16(to_type_matrix_i_to_i_par($matrix.as_view())),
+                    DataType::U32 => DataMatrix::U32(to_type_matrix_i_to_i_par($matrix.as_view())),
+                    DataType::U64 => DataMatrix::U64(to_type_matrix_i_to_i_par($matrix.as_view())),
+                    DataType::F32 => DataMatrix::F32(to_type_matrix_i_to_f_par($matrix.as_view())),
+                    DataType::F64 => DataMatrix::F64(to_type_matrix_i_to_f_par($matrix.as_view())),
                 }
-            });
+            };
+            (@float $ty:ty, $matrix:expr) => {
+                match data_type {
+                    DataType::U8 => DataMatrix::U8(to_type_matrix_f_to_i_par($matrix.as_view())),
+                    DataType::U16 => DataMatrix::U16(to_type_matrix_f_to_i_par($matrix.as_view())),
+                    DataType::U32 => DataMatrix::U32(to_type_matrix_f_to_i_par($matrix.as_view())),
+                    DataType::U64 => DataMatrix::U64(to_type_matrix_f_to_i_par($matrix.as_view())),
+                    DataType::F32 => DataMatrix::F32(to_type_matrix_f_to_f_par($matrix.as_view())),
+                    DataType::F64 => DataMatrix::F64(to_type_matrix_f_to_f_par($matrix.as_view())),
+                }
+            };
+        }
 
-        result
+        match self {
+            DataMatrix::U8(matrix) => impl_cast_rescale_par!(@int u8, matrix),
+            DataMatrix::U16(matrix) => impl_cast_rescale_par!(@int u16, matrix),
+            DataMatrix::U32(matrix) => impl_cast_rescale_par!(@int u32, matrix),
+            DataMatrix::U64(matrix) => impl_cast_rescale_par!(@int u64, matrix),
+            DataMatrix::F32(matrix) => impl_cast_rescale_par!(@float f32, matrix),
+            DataMatrix::F64(matrix) => impl_cast_rescale_par!(@float f64, matrix),
+        }
     }
 }
 
@@ -264,3 +274,211 @@ impl_from_data_matrix!(
     (DMatrix<f32>, F32),
     (DMatrix<f64>, F64)
 );
+
+// MARK: Helper functions
+
+fn cast_from_matrix_par<T>(data_type: DataType, matrix: DMatrixView<T>) -> DataMatrix
+where
+    T: Send + Sync + num_traits::NumCast + num_traits::Zero + nalgebra::Scalar + Copy,
+{
+    match data_type {
+        DataType::U8 => cast_matrix_par::<_, u8>(matrix).into(),
+        DataType::U16 => cast_matrix_par::<_, u16>(matrix).into(),
+        DataType::U32 => cast_matrix_par::<_, u32>(matrix).into(),
+        DataType::U64 => cast_matrix_par::<_, u64>(matrix).into(),
+        DataType::F32 => cast_matrix_par::<_, f32>(matrix).into(),
+        DataType::F64 => cast_matrix_par::<_, f64>(matrix).into(),
+    }
+}
+
+fn cast_matrix_par<A, B>(matrix: DMatrixView<A>) -> DMatrix<B>
+where
+    A: Send + Sync + num_traits::NumCast + nalgebra::Scalar + Copy,
+    B: Send + Sync + num_traits::NumCast + nalgebra::Scalar + num_traits::Zero,
+{
+    let mut result = DMatrix::zeros(matrix.nrows(), matrix.ncols());
+
+    result
+        .par_column_iter_mut()
+        .zip(matrix.par_column_iter())
+        .for_each(|(mut r, x)| {
+            for (r, x) in r.iter_mut().zip(x.iter()) {
+                *r = num_traits::cast(*x).unwrap_or(B::zero());
+            }
+        });
+
+    result
+}
+
+fn to_type_matrix_f_to_i_par<A, B>(matrix: DMatrixView<A>) -> DMatrix<B>
+where
+    A: Send + Sync + nalgebra::Scalar + num_traits::Float,
+    B: Send + Sync + nalgebra::Scalar + num_traits::PrimInt + num_traits::Zero,
+{
+    let mut result = DMatrix::zeros(matrix.nrows(), matrix.ncols());
+
+    let mut max: A = num_traits::cast(B::max_value()).unwrap();
+
+    while num_traits::cast::<_, B>(max).is_none() {
+        max = max * A::from(0.9999999).unwrap();
+    }
+
+    result
+        .par_column_iter_mut()
+        .zip(matrix.par_column_iter())
+        .for_each(|(mut r, x)| {
+            for (r, x) in r.iter_mut().zip(x.iter()) {
+                *r = num_traits::cast((*x * max).clamp(A::zero(), max)).unwrap();
+            }
+        });
+
+    result
+}
+
+fn to_type_matrix_i_to_f_par<A, B>(matrix: DMatrixView<A>) -> DMatrix<B>
+where
+    A: Send + Sync + nalgebra::Scalar + num_traits::PrimInt + num_traits::Zero,
+    B: Send + Sync + nalgebra::Scalar + num_traits::Float,
+{
+    let mut result = DMatrix::zeros(matrix.nrows(), matrix.ncols());
+
+    let max: B = num_traits::cast(A::max_value()).unwrap();
+
+    result
+        .par_column_iter_mut()
+        .zip(matrix.par_column_iter())
+        .for_each(|(mut r, x)| {
+            for (r, x) in r.iter_mut().zip(x.iter()) {
+                *r = num_traits::cast::<_, B>(*x).unwrap() / max;
+            }
+        });
+
+    result
+}
+
+fn to_type_matrix_f_to_f_par<A, B>(matrix: DMatrixView<A>) -> DMatrix<B>
+where
+    A: Send + Sync + nalgebra::Scalar + num_traits::Float,
+    B: Send + Sync + nalgebra::Scalar + num_traits::Float,
+{
+    cast_matrix_par(matrix)
+}
+
+fn to_type_matrix_i_to_i_par<A, B>(matrix: DMatrixView<A>) -> DMatrix<B>
+where
+    A: Send + Sync + nalgebra::Scalar + num_traits::PrimInt + num_traits::Zero,
+    B: Send + Sync + nalgebra::Scalar + num_traits::PrimInt + num_traits::Zero,
+{
+    if mem::size_of::<A>() == mem::size_of::<B>() {
+        return cast_matrix_par(matrix);
+    }
+
+    let mut result = DMatrix::zeros(matrix.nrows(), matrix.ncols());
+
+    if mem::size_of::<A>() > mem::size_of::<B>() {
+        let shift = (mem::size_of::<A>() - mem::size_of::<B>()) * 8;
+
+        result
+            .par_column_iter_mut()
+            .zip(matrix.par_column_iter())
+            .for_each(|(mut r, x)| {
+                for (r, x) in r.iter_mut().zip(x.iter()) {
+                    *r = num_traits::cast(*x >> shift).unwrap();
+                }
+            });
+    } else {
+        let shift = (mem::size_of::<B>() - mem::size_of::<A>()) * 8;
+
+        result
+            .par_column_iter_mut()
+            .zip(matrix.par_column_iter())
+            .for_each(|(mut r, x)| {
+                for (r, x) in r.iter_mut().zip(x.iter()) {
+                    *r = num_traits::cast::<_, B>(*x).unwrap() << shift;
+                }
+            });
+    };
+
+    result
+}
+
+// MARK: Tests
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_data_matrix_to_type_matrix_f_to_i_par() {
+        let data = DMatrix::from_row_slice(2, 2, &[0.0, 0.5, 1.0, 1.5]);
+        let result = to_type_matrix_f_to_i_par::<f32, u8>(data.as_view());
+        let expected = DMatrix::from_row_slice(2, 2, &[0, 127, 255, 255]);
+        assert_eq!(result, expected);
+
+        let result = to_type_matrix_f_to_i_par::<f32, u16>(data.as_view());
+        let expected = DMatrix::from_row_slice(2, 2, &[0, 32767, 65535, 65535]);
+        assert_eq!(result, expected);
+
+        let result = to_type_matrix_f_to_i_par::<f32, u32>(data.as_view());
+        let expected = DMatrix::from_row_slice(2, 2, &[0, 2147483392, 4294966784, 4294966784]);
+        assert_eq!(result, expected);
+
+        let result = to_type_matrix_f_to_i_par::<f32, u64>(data.as_view());
+        let expected = [
+            0,
+            9223370937343148032,
+            18446741874686296064,
+            18446741874686296064,
+        ];
+        let expected = DMatrix::from_row_slice(2, 2, &expected);
+        assert_eq!(result, expected);
+
+        let data = DMatrix::from_row_slice(2, 2, &[0.0, 0.5, 1.0, 1.5]);
+        let result = to_type_matrix_f_to_i_par::<f64, u8>(data.as_view());
+        let expected = DMatrix::from_row_slice(2, 2, &[0, 127, 255, 255]);
+        assert_eq!(result, expected);
+
+        let result = to_type_matrix_f_to_i_par::<f64, u16>(data.as_view());
+        let expected = DMatrix::from_row_slice(2, 2, &[0, 32767, 65535, 65535]);
+        assert_eq!(result, expected);
+
+        let result = to_type_matrix_f_to_i_par::<f64, u32>(data.as_view());
+        let expected = DMatrix::from_row_slice(2, 2, &[0, 2147483647, 4294967295, 4294967295]);
+        assert_eq!(result, expected);
+
+        let result = to_type_matrix_f_to_i_par::<f64, u64>(data.as_view());
+        let expected = [
+            0,
+            9223371114517572608,
+            18446742229035145216,
+            18446742229035145216,
+        ];
+        let expected = DMatrix::from_row_slice(2, 2, &expected);
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_data_matrix_to_type_matrix_i_to_i_par() {
+        let data = DMatrix::from_row_slice(2, 2, &[0, 1, 127, 255]);
+        let result = to_type_matrix_i_to_i_par::<u8, u8>(data.as_view());
+        assert_eq!(result, data);
+
+        let result = to_type_matrix_i_to_i_par::<u8, u16>(data.as_view());
+        let expected = DMatrix::from_row_slice(2, 2, &[0, 1 << 8, 127 << 8, 255 << 8]);
+        assert_eq!(result, expected);
+
+        let result = to_type_matrix_i_to_i_par::<u8, u32>(data.as_view());
+        let expected = DMatrix::from_row_slice(2, 2, &[0, 1 << 24, 127 << 24, 255 << 24]);
+        assert_eq!(result, expected);
+
+        let result = to_type_matrix_i_to_i_par::<u8, u64>(data.as_view());
+        let expected = DMatrix::from_row_slice(2, 2, &[0, 1u64 << 56, 127u64 << 56, 255u64 << 56]);
+        assert_eq!(result, expected);
+
+        let data = expected;
+
+        let result = to_type_matrix_i_to_i_par::<u64, u8>(data.as_view());
+        let expected = DMatrix::from_row_slice(2, 2, &[0, 1, 127, 255]);
+        assert_eq!(result, expected);
+    }
+}
