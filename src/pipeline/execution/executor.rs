@@ -227,13 +227,13 @@ impl RunningNodeTask {
 
                             if connection.did_connect() {
                                 self.input_connections.push((input_id, connection.get_invalidation_notifier()));
-                                self.invalidate(InvalidationCause::Connected);
+                                self.invalidate(InvalidationCause::Connected(input_id));
                             }
                         }
                         Some(ControlMsg::Disconnect(input_id)) => {
                             self.node_task.disconnect(input_id);
                             self.input_connections.retain(|(id, _)| *id != input_id);
-                            self.invalidate(InvalidationCause::Disconnected);
+                            self.invalidate(InvalidationCause::Disconnected(input_id));
                         }
                         None => break,
                     };
@@ -242,8 +242,8 @@ impl RunningNodeTask {
                     self.node_task.sync_node(self.sync_rx.borrow().as_ref());
                     self.invalidate(InvalidationCause::Synced);
                 }
-                _ = Self::on_invalidation(&mut self.input_connections) => {
-                    self.invalidate(InvalidationCause::InputInvalidated);
+                input_id = Self::on_invalidation(&mut self.input_connections) => {
+                    self.invalidate(InvalidationCause::InputInvalidated(input_id));
                 }
                 is_error = Self::run_task(self.error_on_last_run, self.node_task.as_mut()) => {
                     self.error_on_last_run = is_error;
@@ -289,16 +289,20 @@ impl RunningNodeTask {
         self.error_on_last_run = false;
     }
 
-    async fn on_invalidation(notifiers: &mut Vec<(InputId, InvalidationNotifier)>) {
+    async fn on_invalidation(notifiers: &mut Vec<(InputId, InvalidationNotifier)>) -> InputId {
         // Cannot borrow self as mutable again at call site
         if !notifiers.is_empty() {
             let (is_channel_open, index, ..) =
                 select_all(notifiers.iter_mut().map(|(_, n)| n.on_invalidate())).await;
 
+            let id = notifiers[index].0;
+
             if !is_channel_open {
                 // Partner dropped, already disconnected
                 notifiers.remove(index);
             }
+
+            id
         } else {
             futures::future::pending().await
         }

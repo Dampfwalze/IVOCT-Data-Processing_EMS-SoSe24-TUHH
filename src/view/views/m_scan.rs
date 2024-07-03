@@ -1,26 +1,61 @@
-use std::{num::NonZeroU32, sync::Arc};
+use std::{collections::HashSet, num::NonZeroU32, sync::Arc};
 
 use crate::{cache::Cached, gui::widgets::PanZoomRect, queue_channel::error::RecvError};
 
 use super::prelude::*;
-use egui::{Color32, Rect, Sense, Stroke, Vec2};
+use egui::{pos2, Rect, Sense, Stroke, Vec2};
 use futures::future;
-use tokio::sync::RwLock;
+use tokio::sync::{watch, RwLock};
 use wgpu::{util::DeviceExt, PushConstantRange};
+
+pub enum InputId {
+    MScan,
+    BScanSegmentation,
+}
+
+impl_enum_from_into_id_types!(InputId, [graph::InputId], {
+    0 => MScan,
+    1 => BScanSegmentation,
+});
 
 // MARK: View
 
 #[derive(Clone)]
 pub struct View {
-    input: NodeOutput,
+    m_scan: NodeOutput,
+    b_scan_segmentation: Option<NodeOutput>,
+
     textures_state: Cached<Option<TexturesState>>,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     bind_group_layout: Arc<wgpu::BindGroupLayout>,
+
+    b_scan_segmentation_rx: Option<watch::Receiver<Vec<usize>>>,
+}
+
+impl View {
+    fn new(node_output: NodeOutput, cache: &Cache, render_state: &RenderState) -> Self {
+        Self {
+            m_scan: node_output,
+            b_scan_segmentation: None,
+            textures_state: cache.get((node_output.node_id, node_output.output_id)),
+            device: render_state.device.clone(),
+            queue: render_state.queue.clone(),
+            bind_group_layout: render_state
+                .renderer
+                .read()
+                .callback_resources
+                .get::<SharedResources>()
+                .unwrap()
+                .bind_group_layout
+                .clone(),
+            b_scan_segmentation_rx: None,
+        }
+    }
 }
 
 impl DataView for View {
-    type InputId = InputIdSingle;
+    type InputId = InputId;
 
     fn init_wgpu(
         device: &wgpu::Device,
@@ -32,63 +67,77 @@ impl DataView for View {
 
     fn from_node_output(
         node_output: &NodeOutput,
-        _pipeline: &Pipeline,
+        pipeline: &Pipeline,
         cache: &Cache,
         render_state: &RenderState,
     ) -> Option<Self>
     where
         Self: Sized,
     {
-        if node_output.type_id == PipelineDataType::MScan.into() {
-            Some(Self {
-                input: *node_output,
-                textures_state: cache.get((node_output.node_id, node_output.output_id)),
-                device: render_state.device.clone(),
-                queue: render_state.queue.clone(),
-                bind_group_layout: render_state
-                    .renderer
-                    .read()
-                    .callback_resources
-                    .get::<SharedResources>()
-                    .unwrap()
-                    .bind_group_layout
-                    .clone(),
-            })
-        } else {
-            None
+        match PipelineDataType::from(node_output.type_id) {
+            PipelineDataType::MScan => Some(Self::new(*node_output, cache, render_state)),
+            PipelineDataType::BScanSegmentation => {
+                let m_scan = find_m_scan_input(pipeline, node_output.node_id)?;
+                Some(Self {
+                    b_scan_segmentation: Some(*node_output),
+                    ..Self::new(m_scan, cache, render_state)
+                })
+            }
+            _ => None,
         }
     }
 
     fn inputs(&self) -> impl Iterator<Item = (Self::InputId, Option<NodeOutput>)> {
-        std::iter::once((InputIdSingle, Some(self.input)))
+        [
+            (InputId::MScan, Some(self.m_scan)),
+            (InputId::BScanSegmentation, self.b_scan_segmentation),
+        ]
+        .into_iter()
     }
 
     fn changed(&self, other: &Self) -> bool {
-        self.input != other.input
+        self.m_scan != other.m_scan
     }
 
     fn connect(&mut self, node_output: NodeOutput, _pipeline: &Pipeline) -> bool {
-        if node_output.type_id == PipelineDataType::MScan.into() {
-            self.input = node_output;
-            self.textures_state
-                .change_target((node_output.node_id, node_output.output_id));
-            true
-        } else {
-            false
+        match PipelineDataType::from(node_output.type_id) {
+            PipelineDataType::MScan => {
+                self.m_scan = node_output;
+                self.textures_state
+                    .change_target((node_output.node_id, node_output.output_id));
+                true
+            }
+            PipelineDataType::BScanSegmentation => {
+                self.b_scan_segmentation = Some(node_output);
+                true
+            }
+            _ => false,
         }
     }
 
-    fn disconnect(&mut self, _input_id: Self::InputId) -> Existence {
-        Existence::Destroy
+    fn disconnect(&mut self, input_id: Self::InputId) -> Existence {
+        match input_id {
+            InputId::MScan => Existence::Destroy,
+            InputId::BScanSegmentation => {
+                self.b_scan_segmentation = None;
+                Existence::Keep
+            }
+        }
     }
 
     fn create_view_task(&mut self) -> impl DataViewTask<InputId = Self::InputId, DataView = Self> {
+        let (b_scan_tx, b_scan_rx) = watch::channel(Vec::new());
+
+        self.b_scan_segmentation_rx = Some(b_scan_rx);
+
         Task {
-            input: TaskInput::default(),
+            m_scan_in: TaskInput::default(),
+            b_scan_segmentation_in: TaskInput::default(),
             textures_state: self.textures_state.clone(),
             device: self.device.clone(),
             queue: self.queue.clone(),
             bind_group_layout: self.bind_group_layout.clone(),
+            b_scan_segmentation_tx: b_scan_tx,
         }
     }
 
@@ -110,7 +159,7 @@ impl DataView for View {
         PanZoomRect::new()
             .zoom_y(false)
             .min_zoom(1.0)
-            .show(ui, |ui, _viewport, n_viewport| {
+            .show(ui, |ui, viewport, n_viewport| {
                 let response = ui.allocate_rect(ui.max_rect(), Sense::hover());
 
                 let gpu_viewport = Rect::from_min_max(
@@ -128,12 +177,57 @@ impl DataView for View {
                             rect: gpu_viewport,
                         },
                     ));
+
+                if let Some(b_scan_segmentation_rx) = self.b_scan_segmentation_rx.as_ref() {
+                    let b_scan_segmentation = b_scan_segmentation_rx.borrow();
+
+                    for b_scan in b_scan_segmentation.iter() {
+                        let x = (*b_scan as f32) / (textures_state.a_scan_count as f32);
+                        let x = x * viewport.width() + viewport.min.x;
+
+                        ui.painter().line_segment(
+                            [pos2(x, viewport.min.y), pos2(x, viewport.max.y)],
+                            Stroke::new(1.0, egui::Color32::BLUE),
+                        );
+                    }
+                }
             });
 
         if textures_state.working {
             ui.ctx().request_repaint();
         }
     }
+}
+
+fn find_m_scan_input(pipeline: &Pipeline, node_id: NodeId) -> Option<NodeOutput> {
+    let mut seen_nodes = HashSet::new();
+
+    fn find_m_scan_input(
+        pipeline: &Pipeline,
+        node_id: NodeId,
+        seen_nodes: &mut HashSet<NodeId>,
+    ) -> Option<NodeOutput> {
+        if seen_nodes.contains(&node_id) {
+            return None;
+        }
+
+        seen_nodes.insert(node_id);
+        let node = &pipeline[node_id];
+
+        node.inputs().iter().find_map(|(_, output)| {
+            if let Some(output) = output {
+                if output.type_id == PipelineDataType::MScan.into() {
+                    return Some(*output);
+                } else {
+                    return find_m_scan_input(pipeline, output.node_id, seen_nodes);
+                }
+            }
+
+            None
+        })
+    }
+
+    find_m_scan_input(pipeline, node_id, &mut seen_nodes)
 }
 
 // MARK: PaintCallback
@@ -183,48 +277,120 @@ impl eframe::egui_wgpu::CallbackTrait for PaintCallback {
 // MARK: Task
 
 struct Task {
-    input: TaskInput<requests::MScan>,
+    m_scan_in: TaskInput<requests::MScan>,
+    b_scan_segmentation_in: TaskInput<requests::BScanSegmentation>,
+
     textures_state: Cached<Option<TexturesState>>,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     bind_group_layout: Arc<wgpu::BindGroupLayout>,
+
+    b_scan_segmentation_tx: watch::Sender<Vec<usize>>,
 }
 
 impl DataViewTask for Task {
-    type InputId = InputIdSingle;
+    type InputId = InputId;
     type DataView = View;
 
     fn sync_view(&mut self, view: &Self::DataView) {
         self.textures_state
-            .change_target((view.input.node_id, view.input.output_id));
+            .change_target((view.m_scan.node_id, view.m_scan.output_id));
     }
 
-    fn connect(&mut self, _input_id: Self::InputId, input: &mut ConnectionHandle) {
-        self.input.connect(input);
+    fn connect(&mut self, input_id: Self::InputId, input: &mut ConnectionHandle) {
+        match input_id {
+            InputId::MScan => self.m_scan_in.connect(input),
+            InputId::BScanSegmentation => self.b_scan_segmentation_in.connect(input),
+        };
     }
 
-    fn disconnect(&mut self, _input_id: Self::InputId) {
-        self.input.disconnect();
+    fn disconnect(&mut self, input_id: Self::InputId) {
+        match input_id {
+            InputId::MScan => self.m_scan_in.disconnect(),
+            InputId::BScanSegmentation => self.b_scan_segmentation_in.disconnect(),
+        };
     }
 
     fn invalidate(&mut self, cause: InvalidationCause) {
+        fn invalidate_m_scan(slf: &mut Task) {
+            *slf.textures_state.write() = None;
+        }
+        fn invalidate_b_scan_segmentation(slf: &mut Task) {
+            let _ = slf.b_scan_segmentation_tx.send_modify(|d| {
+                d.clear();
+            });
+        }
+
         match cause {
-            InvalidationCause::InputInvalidated | InvalidationCause::Synced => {
-                *self.textures_state.write() = None;
-            }
+            InvalidationCause::Synced => invalidate_m_scan(self),
+            InvalidationCause::InputInvalidated(input_id) => match input_id.into() {
+                InputId::MScan => invalidate_m_scan(self),
+                InputId::BScanSegmentation => invalidate_b_scan_segmentation(self),
+            },
             _ => {}
         }
     }
 
     async fn run(&mut self) -> anyhow::Result<()> {
-        if self.textures_state.read().is_some() {
-            let () = future::pending().await;
+        tokio::select! {
+            Some(res) = async {
+                let has_data = self.textures_state.read().is_some();
+                match has_data {
+                    true => None,
+                    false => self.m_scan_in.request(requests::MScan).await,
+                }
+            } => {
+                self.get_m_scan(res).await?;
+            }
+            Some(res) = async {
+                let is_empty = self.b_scan_segmentation_tx.borrow().is_empty();
+                match is_empty {
+                    false => None,
+                    _ => {
+                        self.b_scan_segmentation_in
+                            .request(requests::BScanSegmentation)
+                            .await
+                    }
+                }
+            } => {
+                self.get_b_scan_segmentation(res).await?;
+            }
+            _ = future::pending() => {}
         }
 
-        let Some(res) = self.input.request(requests::MScan).await else {
-            return Err(anyhow::anyhow!("No MScan data"));
+        Ok(())
+    }
+}
+
+impl Task {
+    async fn get_b_scan_segmentation(
+        &mut self,
+        res: requests::StreamedResponse<usize>,
+    ) -> anyhow::Result<()> {
+        let Some(mut rx) = res.subscribe() else {
+            return Ok(());
         };
 
+        self.b_scan_segmentation_tx.send_modify(|d| {
+            d.clear();
+        });
+
+        loop {
+            let data = match rx.recv().await {
+                Ok(data) => data,
+                Err(RecvError::Closed) => break,
+                _ => return Ok(()),
+            };
+
+            self.b_scan_segmentation_tx.send_modify(|d| {
+                d.push(data);
+            });
+        }
+
+        Ok(())
+    }
+
+    async fn get_m_scan(&mut self, res: requests::MScanResponse) -> anyhow::Result<()> {
         {
             let mut state = self.textures_state.write();
             if state.is_none() {

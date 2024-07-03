@@ -65,7 +65,7 @@ impl PipelineNode for Node {
     }
 
     fn get_output_id_for_view_request(&self) -> Option<(OutputIdSingle, impl Into<TypeId>)> {
-        Some((OutputIdSingle, PipelineDataType::MScan))
+        Some((OutputIdSingle, PipelineDataType::BScanSegmentation))
     }
 
     fn create_node_task(&mut self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>) {

@@ -67,10 +67,10 @@ impl<T: NodeTask + Send + Sync> DynNodeTask for T {
 }
 
 pub enum InvalidationCause {
-    Connected,
-    Disconnected,
+    Connected(InputId),
+    Disconnected(InputId),
     Synced,
-    InputInvalidated,
+    InputInvalidated(InputId),
 }
 
 pub trait NodeTaskBuilder {
