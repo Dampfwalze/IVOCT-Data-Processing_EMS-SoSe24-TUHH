@@ -72,7 +72,7 @@ impl EditNode for Node {
                 ui.add(
                     DragValue::new(&mut self.gauss_settings.sigma)
                         .speed(0.1)
-                        .clamp_range(0.0..=10.0)
+                        .clamp_range(0.1..=50.0)
                         .prefix("Sigma: "),
                 );
 
