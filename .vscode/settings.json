@@ -4,6 +4,7 @@
         "consts",
         "eframe",
         "egui",
+        "emath",
         "hann",
         "hasher",
         "IVOCT",

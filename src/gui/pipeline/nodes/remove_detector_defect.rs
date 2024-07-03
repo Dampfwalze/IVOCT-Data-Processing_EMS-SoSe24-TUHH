@@ -45,7 +45,7 @@ impl EditNode for Node {
             },
         );
 
-        ui.add(DragValue::new(&mut self.upper).speed(1).prefix("Upper: "));
-        ui.add(DragValue::new(&mut self.lower).speed(1).prefix("Lower: "));
+        ui.add(DragValue::new(&mut self.upper).prefix("Upper: "));
+        ui.add(DragValue::new(&mut self.lower).prefix("Lower: "));
     }
 }

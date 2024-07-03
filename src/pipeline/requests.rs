@@ -15,6 +15,9 @@ pub struct VectorData;
 #[derive(Debug, Clone, Copy)]
 pub struct MScan;
 
+#[derive(Debug, Clone, Copy)]
+pub struct BScanSegmentation;
+
 //MARK: Implementations
 
 impl Request for RawMScan {
@@ -34,6 +37,17 @@ impl Request for MScan {
 
     fn is_response_valid(&self, response: &Self::Response) -> bool {
         !response.data.is_lagged()
+    }
+}
+
+impl Request for BScanSegmentation {
+    // Every element is the index of the first a-scan in the next b-scan. The
+    // last element is the index of the first a-scan after the last b-scan. (The
+    // number of b-scans is len-1)
+    type Response = StreamedResponse<usize>;
+
+    fn is_response_valid(&self, response: &Self::Response) -> bool {
+        !response.is_lagged()
     }
 }
 

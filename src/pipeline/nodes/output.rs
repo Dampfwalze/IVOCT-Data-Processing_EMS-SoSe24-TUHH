@@ -11,6 +11,12 @@ use crate::queue_channel::error::RecvError;
 
 use super::prelude::*;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Progress {
+    Idle,
+    Working(Option<f32>),
+}
+
 // MARK: Node
 
 #[derive(Debug, Clone)]
@@ -21,7 +27,7 @@ pub struct Node {
 
     pub input: NodeInput<()>,
 
-    pub progress_rx: Option<watch::Receiver<Option<f32>>>,
+    pub progress_rx: Option<watch::Receiver<Progress>>,
 }
 
 impl Default for Node {
@@ -57,7 +63,7 @@ impl PipelineNode for Node {
     }
 
     fn create_node_task(&mut self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>) {
-        let (progress_tx, progress_rx) = watch::channel(None);
+        let (progress_tx, progress_rx) = watch::channel(Progress::Idle);
 
         self.progress_rx = Some(progress_rx);
 
@@ -69,6 +75,9 @@ impl PipelineNode for Node {
                 PipelineDataType::RawMScan => TaskInputType::RawMScan(TaskInput::default()),
                 PipelineDataType::DataVector => TaskInputType::DataVector(TaskInput::default()),
                 PipelineDataType::MScan => TaskInputType::MScan(TaskInput::default()),
+                PipelineDataType::BScanSegmentation => {
+                    TaskInputType::BScanSegmentation(TaskInput::default())
+                }
             },
         });
     }
@@ -81,6 +90,7 @@ enum TaskInputType {
     RawMScan(TaskInput<requests::RawMScan>),
     DataVector(TaskInput<requests::VectorData>),
     MScan(TaskInput<requests::MScan>),
+    BScanSegmentation(TaskInput<requests::BScanSegmentation>),
 }
 
 impl TaskInputType {
@@ -89,6 +99,7 @@ impl TaskInputType {
             TaskInputType::RawMScan(input) => input.disconnect(),
             TaskInputType::DataVector(input) => input.disconnect(),
             TaskInputType::MScan(input) => input.disconnect(),
+            TaskInputType::BScanSegmentation(input) => input.disconnect(),
         }
     }
 }
@@ -99,7 +110,7 @@ struct Task {
 
     input: TaskInputType,
 
-    progress_tx: watch::Sender<Option<f32>>,
+    progress_tx: watch::Sender<Progress>,
 }
 
 impl NodeTask for Task {
@@ -107,7 +118,7 @@ impl NodeTask for Task {
     type PipelineNode = Node;
 
     fn invalidate(&mut self, _cause: InvalidationCause) {
-        let _ = self.progress_tx.send(None);
+        let _ = self.progress_tx.send(Progress::Idle);
     }
 
     fn connect(&mut self, _input_id: Self::InputId, input: &mut ConnectionHandle) {
@@ -133,6 +144,13 @@ impl NodeTask for Task {
                     let mut task_input = TaskInput::<requests::MScan>::default();
                     if task_input.connect(input) {
                         resulting = Some(TaskInputType::MScan(task_input));
+                        break;
+                    }
+                }
+                PipelineDataType::BScanSegmentation => {
+                    let mut task_input = TaskInput::<requests::BScanSegmentation>::default();
+                    if task_input.connect(input) {
+                        resulting = Some(TaskInputType::BScanSegmentation(task_input));
                         break;
                     }
                 }
@@ -169,7 +187,7 @@ impl NodeTask for Task {
                     return Err(anyhow!("Failed to subscribe to RawMScan"));
                 };
 
-                let _ = self.progress_tx.send(Some(0.0));
+                let _ = self.progress_tx.send(Progress::Working(None));
 
                 let mut a_scan_count = 0;
 
@@ -183,11 +201,11 @@ impl NodeTask for Task {
                     file.write_all(scan.as_u8_slice()).await?;
 
                     a_scan_count += scan.ncols();
-                    let _ = self
-                        .progress_tx
-                        .send(Some(a_scan_count as f32 / res.a_scan_count as f32));
+                    let _ = self.progress_tx.send(Progress::Working(Some(
+                        a_scan_count as f32 / res.a_scan_count as f32,
+                    )));
                 }
-                let _ = self.progress_tx.send(None);
+                let _ = self.progress_tx.send(Progress::Idle);
             }
             TaskInputType::DataVector(input) => {
                 let Some(data) = input.request(requests::VectorData).await else {
@@ -206,10 +224,10 @@ impl NodeTask for Task {
                 };
 
                 let Some(mut rx) = res.data.subscribe() else {
-                    return Err(anyhow!("Failed to subscribe to RawMScan"));
+                    return Err(anyhow!("Failed to subscribe to MScan"));
                 };
 
-                let _ = self.progress_tx.send(Some(0.0));
+                let _ = self.progress_tx.send(Progress::Working(None));
 
                 let mut a_scan_count = 0;
 
@@ -223,11 +241,36 @@ impl NodeTask for Task {
                     file.write_all(scan.as_u8_slice()).await?;
 
                     a_scan_count += scan.ncols();
-                    let _ = self
-                        .progress_tx
-                        .send(Some(a_scan_count as f32 / res.a_scan_count as f32));
+                    let _ = self.progress_tx.send(Progress::Working(Some(
+                        a_scan_count as f32 / res.a_scan_count as f32,
+                    )));
                 }
-                let _ = self.progress_tx.send(None);
+                let _ = self.progress_tx.send(Progress::Idle);
+            }
+            TaskInputType::BScanSegmentation(input) => {
+                let mut file = fs::File::create(&self.path).await?;
+
+                let Some(res) = input.request(requests::BScanSegmentation).await else {
+                    return Ok(());
+                };
+
+                let Some(mut rx) = res.subscribe() else {
+                    return Err(anyhow!("Failed to subscribe to BScanSegmentation"));
+                };
+
+                let _ = self.progress_tx.send(Progress::Working(None));
+
+                loop {
+                    let value = match rx.recv().await {
+                        Err(RecvError::Closed) => break,
+                        Err(e) => Err(e)?,
+                        Ok(scan) => scan,
+                    };
+
+                    file.write_all(bytemuck::cast_slice(&[value as u32]))
+                        .await?;
+                }
+                let _ = self.progress_tx.send(Progress::Idle);
             }
         }
 

@@ -3,6 +3,7 @@ pub mod filter;
 pub mod output;
 pub mod process_raw_m_scan;
 pub mod remove_detector_defect;
+pub mod segment_b_scans;
 
 use core::fmt;
 
@@ -54,6 +55,7 @@ impl PipelineDataType {
             PipelineDataType::RawMScan => Color32::from_rgb(121, 70, 29),
             PipelineDataType::DataVector => Color32::from_rgb(0, 128, 255),
             PipelineDataType::MScan => Color32::from_rgb(121, 70, 29),
+            PipelineDataType::BScanSegmentation => Color32::from_rgb(0, 128, 255),
         }
     }
 }
@@ -64,6 +66,7 @@ impl fmt::Display for PipelineDataType {
             PipelineDataType::RawMScan => write!(f, "Raw M scan"),
             PipelineDataType::DataVector => write!(f, "Data vector"),
             PipelineDataType::MScan => write!(f, "M scan"),
+            PipelineDataType::BScanSegmentation => write!(f, "B-scan segmentation"),
         }
     }
 }

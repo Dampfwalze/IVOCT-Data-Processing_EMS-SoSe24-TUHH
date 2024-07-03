@@ -1,8 +1,12 @@
 use core::fmt;
+use std::ops::DerefMut;
 
-use egui::{vec2, Color32, DragValue, ProgressBar};
+use egui::{Color32, DragValue, ProgressBar};
 
-use crate::pipeline::nodes::filter::{FilterType, Node};
+use crate::{
+    gui::widgets::DragVector,
+    pipeline::nodes::filter::{FilterType, Node},
+};
 
 use super::prelude::*;
 
@@ -72,34 +76,14 @@ impl EditNode for Node {
                         .prefix("Sigma: "),
                 );
 
+                let kernel_size = self.gauss_settings.kernel_size.deref_mut();
+
                 ui.node_label("Kernel Size");
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 2.0;
-                    ui.allocate_ui_with_layout(
-                        vec2(ui.available_width() / 2.0 - 1.0, ui.available_height()),
-                        ui.layout().with_main_justify(true),
-                        |ui| {
-                            ui.add(
-                                DragValue::new(&mut self.gauss_settings.kernel_size.x)
-                                    .speed(1.0)
-                                    .clamp_range(1..=100)
-                                    .prefix("Rows: "),
-                            );
-                        },
-                    );
-                    ui.allocate_ui_with_layout(
-                        ui.available_size(),
-                        ui.layout().with_main_justify(true),
-                        |ui| {
-                            ui.add(
-                                DragValue::new(&mut self.gauss_settings.kernel_size.y)
-                                    .speed(1.0)
-                                    .clamp_range(1..=100)
-                                    .prefix("Columns: "),
-                            );
-                        },
-                    );
-                });
+                ui.add(
+                    DragVector::new([&mut kernel_size.x, &mut kernel_size.y])
+                        .clamp_range(1..=100)
+                        .prefix(["Rows: ", "Columns: "]),
+                );
             }
         }
 

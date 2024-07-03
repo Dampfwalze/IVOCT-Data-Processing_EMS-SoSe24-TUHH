@@ -47,9 +47,22 @@ impl EditNode for Node {
             self.save();
         }
 
-        if let Some(progress) = self.progress_rx.as_ref().and_then(|rx| rx.borrow().clone()) {
-            ui.add(ProgressBar::new(progress).rounding(3.0));
-            ui.ctx().request_repaint();
+        if let Some(progress_rx) = &self.progress_rx {
+            match progress_rx.borrow().clone() {
+                Progress::Idle => {}
+                Progress::Working(None) => {
+                    ui.add(
+                        ProgressBar::new(0.9999)
+                            .rounding(3.0)
+                            .text("Working...")
+                            .animate(true),
+                    );
+                }
+                Progress::Working(Some(progress)) => {
+                    ui.add(ProgressBar::new(progress).rounding(3.0));
+                    ui.ctx().request_repaint();
+                }
+            }
         }
     }
 }

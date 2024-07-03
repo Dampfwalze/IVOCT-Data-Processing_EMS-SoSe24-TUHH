@@ -48,5 +48,5 @@ fn fs_main(in: VertexOut)  -> @location(0) vec4<f32>{
 
     let pixel = textureLoad(m_scan_texture_array[tex_idx], pixel_uv, 0);
 
-    return vec4<f32>(vec3<f32>(pixel.r) / 255.0, 1.0);
+    return vec4<f32>(vec3<f32>(pixel.r) / 65535.0, 1.0);
 }

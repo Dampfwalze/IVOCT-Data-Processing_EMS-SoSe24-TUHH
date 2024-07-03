@@ -70,6 +70,8 @@ impl DataView for View {
     fn connect(&mut self, node_output: NodeOutput, _pipeline: &Pipeline) -> bool {
         if node_output.type_id == PipelineDataType::MScan.into() {
             self.input = node_output;
+self.textures_state
+                .change_target((node_output.node_id, node_output.output_id));
             true
         } else {
             false
