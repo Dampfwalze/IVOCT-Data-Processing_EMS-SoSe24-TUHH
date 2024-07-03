@@ -5,18 +5,28 @@ var m_scan_texture_array: binding_array<texture_2d<u32>>;
 var m_scan_sampler: sampler;
 
 struct Constants {
+    rect: vec4<f32>,
     texture_count: u32,
 };
 
 var<push_constant> constants: Constants;
 
-var<private> positions: array<vec2<f32>, 6> = array<vec2<f32>, 6>(
-    vec2<f32>(-1.0, 1.0),
-    vec2<f32>(1.0, -1.0),
-    vec2<f32>(-1.0, -1.0),
-    vec2<f32>(-1.0, 1.0),
+var<private> uvs: array<vec2<f32>, 6> = array<vec2<f32>, 6>(
+    vec2<f32>(0.0, 1.0),
+    vec2<f32>(1.0, 0.0),
+    vec2<f32>(0.0, 0.0),
+    vec2<f32>(0.0, 1.0),
     vec2<f32>(1.0, 1.0),
-    vec2<f32>(1.0, -1.0),
+    vec2<f32>(1.0, 0.0),
+);
+
+var<private> position_lookup: array<vec2<u32>, 6> = array<vec2<u32>, 6>(
+    vec2<u32>(0, 1),
+    vec2<u32>(2, 3),
+    vec2<u32>(0, 3),
+    vec2<u32>(0, 1),
+    vec2<u32>(2, 1),
+    vec2<u32>(2, 3),
 );
 
 struct VertexOut {
@@ -26,11 +36,12 @@ struct VertexOut {
 
 @vertex
 fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOut {
+    let lookup = position_lookup[idx];
+
     var out: VertexOut;
 
-    out.position = vec4<f32>(positions[idx], 0.0, 1.0);
-    out.uv = positions[idx] * 0.5 + 0.5;
-    out.uv = vec2<f32>(out.uv.x, 1.0 - out.uv.y);
+    out.position = vec4<f32>(constants.rect[lookup.x], constants.rect[lookup.y], 0.0, 1.0);
+    out.uv = uvs[idx];
 
     return  out;
 }

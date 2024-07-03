@@ -71,7 +71,7 @@ impl<'a> NodeGraphEditor<'a> {
             response,
             inner: (connections, transform),
             ..
-        } = PanZoom.show(ui, |ui, transform| {
+        } = PanZoom::new().show(ui, |ui, transform| {
             let node_ids = pipeline.get_node_ids();
 
             state.sync_state(&node_ids);

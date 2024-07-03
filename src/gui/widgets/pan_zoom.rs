@@ -1,8 +1,28 @@
 use egui::{emath::TSTransform, InnerResponse, LayerId, Order, Ui};
 
-pub struct PanZoom;
+pub struct PanZoom {
+    max_zoom: f32,
+    min_zoom: f32,
+}
 
 impl PanZoom {
+pub fn new() -> Self {
+        Self {
+            max_zoom: f32::INFINITY,
+            min_zoom: 0.0,
+        }
+    }
+
+    pub fn max_zoom(mut self, max_zoom: f32) -> Self {
+        self.max_zoom = max_zoom;
+        self
+    }
+
+    pub fn min_zoom(mut self, min_zoom: f32) -> Self {
+        self.min_zoom = min_zoom;
+        self
+    }
+
     pub fn show<R>(
         &mut self,
         ui: &mut Ui,
@@ -32,9 +52,13 @@ impl PanZoom {
                 let scroll_delta = ui.ctx().input(|i| (i.smooth_scroll_delta.y / 200.0).exp());
 
                 // Zoom in on pointer
-                transform = transform
+                let mut transform_after_scaling = transform
                     * TSTransform::from_translation(pointer_in_layer.to_vec2())
-                    * TSTransform::from_scaling(zoom_delta * scroll_delta)
+                    * TSTransform::from_scaling(zoom_delta * scroll_delta);
+                transform_after_scaling.scaling = transform_after_scaling
+                    .scaling
+                    .clamp(self.min_zoom, self.max_zoom);
+                transform = transform_after_scaling
                     * TSTransform::from_translation(-pointer_in_layer.to_vec2());
             }
         }

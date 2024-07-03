@@ -113,11 +113,8 @@ impl egui_dock::TabViewer for IVOCTTestApp {
         }
     }
 
-    fn scroll_bars(&self, tab: &Self::Tab) -> [bool; 2] {
-        match tab {
-            TabType::Pipeline => [false, false],
-            _ => [true, true],
-        }
+    fn scroll_bars(&self, _tab: &Self::Tab) -> [bool; 2] {
+        [false, false]
     }
 
     fn id(&mut self, tab: &mut Self::Tab) -> egui::Id {

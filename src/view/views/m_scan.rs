@@ -1,9 +1,9 @@
 use std::{num::NonZeroU32, sync::Arc};
 
-use crate::{cache::Cached, queue_channel::error::RecvError};
+use crate::{cache::Cached, gui::widgets::PanZoomRect, queue_channel::error::RecvError};
 
 use super::prelude::*;
-use egui::Sense;
+use egui::{Color32, Rect, Sense, Stroke, Vec2};
 use futures::future;
 use tokio::sync::RwLock;
 use wgpu::{util::DeviceExt, PushConstantRange};
@@ -70,7 +70,7 @@ impl DataView for View {
     fn connect(&mut self, node_output: NodeOutput, _pipeline: &Pipeline) -> bool {
         if node_output.type_id == PipelineDataType::MScan.into() {
             self.input = node_output;
-self.textures_state
+            self.textures_state
                 .change_target((node_output.node_id, node_output.output_id));
             true
         } else {
@@ -107,17 +107,28 @@ self.textures_state
             return;
         };
 
-        let response = ui.allocate_rect(ui.max_rect(), Sense::hover());
+        PanZoomRect::new()
+            .zoom_y(false)
+            .min_zoom(1.0)
+            .show(ui, |ui, _viewport, n_viewport| {
+                let response = ui.allocate_rect(ui.max_rect(), Sense::hover());
 
-        ui.painter()
-            .add(eframe::egui_wgpu::Callback::new_paint_callback(
-                response.rect,
-                PaintCallback {
-                    texture_bind_group: texture_bind_group.clone(),
-                    texture_count: textures_state.textures.len(),
-                    a_scan_count: textures_state.a_scan_count,
-                },
-            ));
+                let gpu_viewport = Rect::from_min_max(
+                    n_viewport.min * 2.0 - Vec2::splat(1.0),
+                    n_viewport.max * 2.0 - Vec2::splat(1.0),
+                );
+
+                ui.painter()
+                    .add(eframe::egui_wgpu::Callback::new_paint_callback(
+                        response.rect,
+                        PaintCallback {
+                            texture_bind_group: texture_bind_group.clone(),
+                            texture_count: textures_state.textures.len(),
+                            a_scan_count: textures_state.a_scan_count,
+                            rect: gpu_viewport,
+                        },
+                    ));
+            });
 
         if textures_state.working {
             ui.ctx().request_repaint();
@@ -131,6 +142,7 @@ struct PaintCallback {
     texture_bind_group: Arc<wgpu::BindGroup>,
     texture_count: usize,
     a_scan_count: usize,
+    rect: Rect,
 }
 
 impl eframe::egui_wgpu::CallbackTrait for PaintCallback {
@@ -142,12 +154,27 @@ impl eframe::egui_wgpu::CallbackTrait for PaintCallback {
     ) {
         let resources = callback_resources.get::<SharedResources>().unwrap();
 
+        #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+        #[repr(C)]
+        struct Constants {
+            rect: [f32; 4],
+            texture_count: u32,
+        }
+
         render_pass.set_pipeline(&resources.pipeline);
         render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
         render_pass.set_push_constants(
             wgpu::ShaderStages::all(),
             0,
-            bytemuck::cast_slice(&[self.texture_count as u32]),
+            bytemuck::cast_slice(&[Constants {
+                rect: [
+                    self.rect.min.x,
+                    self.rect.min.y,
+                    self.rect.max.x,
+                    self.rect.max.y,
+                ],
+                texture_count: self.texture_count as u32,
+            }]),
         );
         render_pass.draw(0..6, 0..1);
     }
@@ -240,7 +267,7 @@ impl DataViewTask for Task {
             let device = self.device.clone();
             let queue = self.queue.clone();
             let texture = tokio::task::spawn_blocking(move || {
-let data = data.cast_rescale_par(types::DataType::U16);
+                let data = data.cast_rescale_par(types::DataType::U16);
 
                 device.create_texture_with_data(
                     &queue,
@@ -337,7 +364,7 @@ impl SharedResources {
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[PushConstantRange {
                 stages: wgpu::ShaderStages::all(),
-                range: 0..4,
+                range: 0..20,
             }],
         });
 
