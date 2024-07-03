@@ -142,6 +142,8 @@ impl NodeTask for Task {
                 current_start: self.settings.offset,
             }));
 
+            tx.send(self.settings.offset);
+
             loop {
                 let m_scan_chunk = match m_scan_rx.recv().await {
                     Ok(m_scan) => m_scan,
