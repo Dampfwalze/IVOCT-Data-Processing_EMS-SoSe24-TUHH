@@ -74,12 +74,8 @@ fn polar_fs_main(in: VertexOut) -> @location(0) vec4<f32>{
     }
     let tex_dim = textureDimensions(m_scan_texture_array[0]);
 
-    let a_scan_count = // Chunk size * (count - 1) + last chunk size
-        tex_dim.y * (polar_consts.tex_count - 1) +
-        textureDimensions(m_scan_texture_array[polar_consts.tex_count - 1]).y;
-
     let pixel = load_m_scan(
-        u32(in.uv.x * f32(a_scan_count)),
+        u32(in.uv.x * f32(polar_consts.a_scan_count)),
         u32(in.uv.y * f32(tex_dim.x)),
         polar_consts.tex_count,
         tex_dim
