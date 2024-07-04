@@ -259,6 +259,7 @@ where
                 calculate_distance_sq_of_neighborhood(
                     m_scan,
                     (i..i + settings.neighborhood_width).step_by(step_size),
+                    step_size,
                 ),
             )
         })
@@ -280,6 +281,7 @@ where
 fn calculate_distance_sq_of_neighborhood<T>(
     m_scan: DMatrixView<T>,
     range: impl Iterator<Item = usize>,
+    step_size: usize,
 ) -> T
 where
     T: Scalar
@@ -298,8 +300,8 @@ where
     let mut sum = T::zero();
     let mut count = 0;
 
-    for i in range {
-        let diff = m_scan.column(0) - m_scan.column(i);
+    for (i, col) in range.enumerate() {
+        let diff = m_scan.column(i * step_size) - m_scan.column(col);
 
         // Square vector and sum together
         sum += diff.dot(&diff);
