@@ -1,12 +1,13 @@
 @group(0) @binding(0)
 var m_scan_texture_array: binding_array<texture_2d<u32>>;
 
-@group(0) @binding(1)
-var m_scan_sampler: sampler;
+@group(1) @binding(0)
+var<storage, read> b_scan_segments: array<u32>;
 
 struct PolarConstants {
     rect: vec4<f32>,
     texture_count: u32,
+    view_rotation: f32,
 };
 
 struct CartesianConstants {
@@ -100,6 +101,37 @@ fn cartesian_fs_main(in: VertexOut)  -> @location(0) vec4<f32>{
     let tex_column = a_scan_idx % tex_dim.y;
 
     let tex_row = u32(distance * f32(tex_dim.x));
+
+    let pixel = textureLoad(m_scan_texture_array[tex_idx], vec2<u32>(tex_row, tex_column), 0);
+
+    return vec4<f32>(vec3<f32>(f32(pixel.r) / 65535.0), 1.0);
+}
+
+@fragment
+fn side_fs_main(in: VertexOut)  -> @location(0) vec4<f32>{
+    if (polar_constants.texture_count == 0) {
+        discard;
+    }
+    let b_scan_idx = u32(floor(in.uv.x * f32(arrayLength(&b_scan_segments) - 1)));
+    let b_scan_start = b_scan_segments[b_scan_idx];
+    let b_scan_end = b_scan_segments[b_scan_idx + 1];
+    let b_scan_len = b_scan_end - b_scan_start;
+
+    let rot = (polar_constants.view_rotation + step(0.5, in.uv.y) * 0.5) % 1.0;
+
+    let a_scan_idx = u32(floor(rot * f32(b_scan_len - 1)));
+
+    let tex_dims = textureDimensions(m_scan_texture_array[0]);
+
+    let tex_row = u32(floor(f32(tex_dims.x) * abs(in.uv.y - 0.5) * 2.0));
+
+    let global_a_scan_idx = b_scan_start + a_scan_idx;
+    let tex_idx = global_a_scan_idx / tex_dims.y;
+    let tex_column = global_a_scan_idx % tex_dims.y;
+
+    if (tex_idx >= polar_constants.texture_count) {
+        discard;
+    }
 
     let pixel = textureLoad(m_scan_texture_array[tex_idx], vec2<u32>(tex_row, tex_column), 0);
 
