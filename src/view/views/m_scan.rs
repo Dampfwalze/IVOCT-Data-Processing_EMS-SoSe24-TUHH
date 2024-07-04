@@ -344,9 +344,9 @@ fn cartesian_m_scan_ui(
             CartesianViewPaintCallback {
                 texture_bind_group,
                 texture_count: textures_state.textures.len(),
-                a_scan_count: textures_state.a_scan_count,
                 b_scan_start: b_scan_segmentation[current_b_scan],
                 b_scan_end: b_scan_segmentation[current_b_scan + 1],
+                rect: Rect::from_min_max(Vec2::splat(-1.0).to_pos2(), Vec2::splat(1.0).to_pos2()),
             },
         ));
 
@@ -428,7 +428,6 @@ fn side_m_scan_ui(
                 b_scan_bind_group,
                 texture_bind_group,
                 texture_count: textures_state.textures.len(),
-                a_scan_count: textures_state.a_scan_count,
                 rect: Rect::from_min_max(Vec2::splat(-1.0).to_pos2(), Vec2::splat(1.0).to_pos2()),
                 view_rotation: current_rotation,
             },
@@ -541,23 +540,28 @@ impl eframe::egui_wgpu::CallbackTrait for PolarViewPaintCallback {
         #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
         #[repr(C)]
         struct Constants {
-            rect: [f32; 4],
-            texture_count: u32,
+            tex_count: u32,
+            a_scan_count: u32,
         }
 
         render_pass.set_pipeline(&resources.polar_view_pipeline);
         render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
         render_pass.set_push_constants(
-            wgpu::ShaderStages::all(),
+            wgpu::ShaderStages::VERTEX,
             0,
+            bytemuck::cast_slice(&[
+                self.rect.min.x,
+                self.rect.min.y,
+                self.rect.max.x,
+                self.rect.max.y,
+            ]),
+        );
+        render_pass.set_push_constants(
+            wgpu::ShaderStages::FRAGMENT,
+            16,
             bytemuck::cast_slice(&[Constants {
-                rect: [
-                    self.rect.min.x,
-                    self.rect.min.y,
-                    self.rect.max.x,
-                    self.rect.max.y,
-                ],
-                texture_count: self.texture_count as u32,
+                tex_count: self.texture_count as u32,
+                a_scan_count: self.a_scan_count as u32,
             }]),
         );
         render_pass.draw(0..6, 0..1);
@@ -569,9 +573,9 @@ impl eframe::egui_wgpu::CallbackTrait for PolarViewPaintCallback {
 struct CartesianViewPaintCallback {
     texture_bind_group: Arc<wgpu::BindGroup>,
     texture_count: usize,
-    a_scan_count: usize,
     b_scan_start: usize,
     b_scan_end: usize,
+    rect: Rect,
 }
 
 impl eframe::egui_wgpu::CallbackTrait for CartesianViewPaintCallback {
@@ -586,20 +590,30 @@ impl eframe::egui_wgpu::CallbackTrait for CartesianViewPaintCallback {
         #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
         #[repr(C)]
         struct Constants {
+            tex_count: u32,
             b_scan_start: u32,
             b_scan_end: u32,
-            texture_count: u32,
         }
 
         render_pass.set_pipeline(&resources.cartesian_view_pipeline);
         render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
         render_pass.set_push_constants(
-            wgpu::ShaderStages::all(),
+            wgpu::ShaderStages::VERTEX,
             0,
+            bytemuck::cast_slice(&[
+                self.rect.min.x,
+                self.rect.min.y,
+                self.rect.max.x,
+                self.rect.max.y,
+            ]),
+        );
+        render_pass.set_push_constants(
+            wgpu::ShaderStages::FRAGMENT,
+            16,
             bytemuck::cast_slice(&[Constants {
+                tex_count: self.texture_count as u32,
                 b_scan_start: self.b_scan_start as u32,
                 b_scan_end: self.b_scan_end as u32,
-                texture_count: self.texture_count as u32,
             }]),
         );
         render_pass.draw(0..6, 0..1);
@@ -612,7 +626,6 @@ struct SideViewPaintCallback {
     b_scan_bind_group: Arc<wgpu::BindGroup>,
     texture_bind_group: Arc<wgpu::BindGroup>,
     texture_count: usize,
-    a_scan_count: usize,
     view_rotation: f32,
     rect: Rect,
 }
@@ -629,26 +642,29 @@ impl eframe::egui_wgpu::CallbackTrait for SideViewPaintCallback {
         #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
         #[repr(C)]
         struct Constants {
-            rect: [f32; 4],
-            texture_count: u32,
-            view_rotation: f32,
+            tex_count: u32,
+            view_rot: f32,
         }
 
         render_pass.set_pipeline(&resources.side_view_pipeline);
         render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
         render_pass.set_bind_group(1, &self.b_scan_bind_group, &[]);
         render_pass.set_push_constants(
-            wgpu::ShaderStages::all(),
+            wgpu::ShaderStages::VERTEX,
             0,
+            bytemuck::cast_slice(&[
+                self.rect.min.x,
+                self.rect.min.y,
+                self.rect.max.x,
+                self.rect.max.y,
+            ]),
+        );
+        render_pass.set_push_constants(
+            wgpu::ShaderStages::FRAGMENT,
+            16,
             bytemuck::cast_slice(&[Constants {
-                rect: [
-                    self.rect.min.x,
-                    self.rect.min.y,
-                    self.rect.max.x,
-                    self.rect.max.y,
-                ],
-                texture_count: self.texture_count as u32,
-                view_rotation: self.view_rotation,
+                tex_count: self.texture_count as u32,
+                view_rot: self.view_rotation,
             }]),
         );
         render_pass.draw(0..6, 0..1);
@@ -954,10 +970,16 @@ impl SharedResources {
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("MScan Polar Pipeline Layout"),
             bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[PushConstantRange {
-                stages: wgpu::ShaderStages::all(),
-                range: 0..20,
-            }],
+            push_constant_ranges: &[
+                PushConstantRange {
+                    stages: wgpu::ShaderStages::VERTEX,
+                    range: 0..16,
+                },
+                PushConstantRange {
+                    stages: wgpu::ShaderStages::FRAGMENT,
+                    range: 16..24,
+                },
+            ],
         });
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("m_scan.wgsl"));
@@ -969,7 +991,7 @@ impl SharedResources {
             multisample: wgpu::MultisampleState::default(),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "polar_vs_main",
+                entry_point: "vs_main",
                 buffers: &[],
             },
             fragment: Some(wgpu::FragmentState {
@@ -993,10 +1015,16 @@ impl SharedResources {
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("MScan Cartesian Pipeline Layout"),
             bind_group_layouts: &[&bind_group_layout],
-            push_constant_ranges: &[PushConstantRange {
-                stages: wgpu::ShaderStages::all(),
-                range: 0..20,
-            }],
+            push_constant_ranges: &[
+                PushConstantRange {
+                    stages: wgpu::ShaderStages::VERTEX,
+                    range: 0..16,
+                },
+                PushConstantRange {
+                    stages: wgpu::ShaderStages::FRAGMENT,
+                    range: 16..28,
+                },
+            ],
         });
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("m_scan.wgsl"));
@@ -1008,7 +1036,7 @@ impl SharedResources {
             multisample: wgpu::MultisampleState::default(),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "cartesian_vs_main",
+                entry_point: "vs_main",
                 buffers: &[],
             },
             fragment: Some(wgpu::FragmentState {
@@ -1033,10 +1061,16 @@ impl SharedResources {
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("MScan Polar Pipeline Layout"),
             bind_group_layouts: &[&bind_group_layout, &b_scan_bind_group_layout],
-            push_constant_ranges: &[PushConstantRange {
-                stages: wgpu::ShaderStages::all(),
-                range: 0..24,
-            }],
+            push_constant_ranges: &[
+                PushConstantRange {
+                    stages: wgpu::ShaderStages::VERTEX,
+                    range: 0..16,
+                },
+                PushConstantRange {
+                    stages: wgpu::ShaderStages::FRAGMENT,
+                    range: 16..24,
+                },
+            ],
         });
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("m_scan.wgsl"));
@@ -1048,7 +1082,7 @@ impl SharedResources {
             multisample: wgpu::MultisampleState::default(),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "polar_vs_main",
+                entry_point: "vs_main",
                 buffers: &[],
             },
             fragment: Some(wgpu::FragmentState {
