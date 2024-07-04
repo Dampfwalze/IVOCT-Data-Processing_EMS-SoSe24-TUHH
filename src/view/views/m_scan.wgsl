@@ -4,12 +4,19 @@ var m_scan_texture_array: binding_array<texture_2d<u32>>;
 @group(0) @binding(1)
 var m_scan_sampler: sampler;
 
-struct Constants {
+struct PolarConstants {
     rect: vec4<f32>,
     texture_count: u32,
 };
 
-var<push_constant> constants: Constants;
+struct CartesianConstants {
+    b_scan_start: u32,
+    b_scan_end: u32,
+    texture_count: u32,
+};
+
+var<push_constant> polar_constants: PolarConstants;
+var<push_constant> cartesian_constants: CartesianConstants;
 
 var<private> uvs: array<vec2<f32>, 6> = array<vec2<f32>, 6>(
     vec2<f32>(0.0, 1.0),
@@ -35,29 +42,81 @@ struct VertexOut {
 };
 
 @vertex
-fn vs_main(@builtin(vertex_index) idx: u32) -> VertexOut {
+fn polar_vs_main(@builtin(vertex_index) idx: u32) -> VertexOut {
     let lookup = position_lookup[idx];
 
     var out: VertexOut;
 
-    out.position = vec4<f32>(constants.rect[lookup.x], constants.rect[lookup.y], 0.0, 1.0);
+    out.position = vec4<f32>(polar_constants.rect[lookup.x], polar_constants.rect[lookup.y], 0.0, 1.0);
     out.uv = uvs[idx];
 
-    return  out;
+    return out;
 }
 
 @fragment
-fn fs_main(in: VertexOut)  -> @location(0) vec4<f32>{
-    let global_x = in.uv.x * f32(constants.texture_count);
+fn polar_fs_main(in: VertexOut)  -> @location(0) vec4<f32>{
+    return vec4<f32>(vec3<f32>(sample_m_scan(in.uv, polar_constants.texture_count)), 1.0);
+}
+
+@vertex
+fn cartesian_vs_main(@builtin(vertex_index) idx: u32) -> VertexOut {
+    var out: VertexOut;
+
+    out.position = vec4<f32>(uvs[idx] * 2.0 - 1.0, 0.0, 1.0);
+    out.uv = uvs[idx];
+
+    return out;
+}
+
+@fragment
+fn cartesian_fs_main(in: VertexOut)  -> @location(0) vec4<f32>{
+    let pi = radians(180.0);
+    let two_pi = radians(360.0);
+
+    if (cartesian_constants.texture_count == 0) {
+        discard;
+    }
+
+    let pos = in.uv * 2.0 - 1.0;
+
+    let distance = distance(pos, vec2<f32>(0.0));
+
+    if (distance > 1.0) {
+        discard;
+    }
+
+    let alpha = (atan2(pos.x, pos.y) + pi) / two_pi;
+
+    let a_scan_idx = cartesian_constants.b_scan_start + u32(alpha * f32(cartesian_constants.b_scan_end - cartesian_constants.b_scan_start));
+
+    let tex_dim = textureDimensions(m_scan_texture_array[0]);
+
+    let tex_idx = a_scan_idx / tex_dim.y;
+
+    if (tex_idx >= cartesian_constants.texture_count) {
+        discard;
+    }
+
+    let tex_column = a_scan_idx % tex_dim.y;
+
+    let tex_row = u32(distance * f32(tex_dim.x));
+
+    let pixel = textureLoad(m_scan_texture_array[tex_idx], vec2<u32>(tex_row, tex_column), 0);
+
+    return vec4<f32>(vec3<f32>(f32(pixel.r) / 65535.0), 1.0);
+}
+
+fn sample_m_scan(uv: vec2<f32>, texture_count: u32) -> f32 {
+    let global_x = uv.x * f32(texture_count);
 
     var tex_idx = u32(floor(global_x));
-    tex_idx = min(tex_idx, constants.texture_count - 1);
+    tex_idx = min(tex_idx, texture_count - 1);
 
     let tex_x = fract(global_x);
 
-    let pixel_uv = vec2<u32>(vec2<f32>(in.uv.y, tex_x) * vec2<f32>(textureDimensions(m_scan_texture_array[tex_idx])));
+    let pixel_uv = vec2<u32>(vec2<f32>(uv.y, tex_x) * vec2<f32>(textureDimensions(m_scan_texture_array[tex_idx])));
 
     let pixel = textureLoad(m_scan_texture_array[tex_idx], pixel_uv, 0);
 
-    return vec4<f32>(vec3<f32>(pixel.r) / 65535.0, 1.0);
+    return f32(pixel.r) / 65535.0;
 }

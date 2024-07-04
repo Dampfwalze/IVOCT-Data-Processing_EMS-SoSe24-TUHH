@@ -3,7 +3,7 @@ use std::{collections::HashSet, num::NonZeroU32, sync::Arc};
 use crate::{cache::Cached, gui::widgets::PanZoomRect, queue_channel::error::RecvError};
 
 use super::prelude::*;
-use egui::{pos2, Rect, Sense, Stroke, Vec2};
+use egui::{pos2, Layout, Rect, Response, Sense, Stroke, Vec2};
 use futures::future;
 use tokio::sync::{watch, RwLock};
 use wgpu::{util::DeviceExt, PushConstantRange};
@@ -156,47 +156,137 @@ impl DataView for View {
             return;
         };
 
-        PanZoomRect::new()
-            .zoom_y(false)
-            .min_zoom(1.0)
-            .show(ui, |ui, viewport, n_viewport| {
-                let response = ui.allocate_rect(ui.max_rect(), Sense::hover());
+        let layout = Layout {
+            main_dir: egui::Direction::RightToLeft,
+            cross_justify: true,
+            ..*ui.layout()
+        };
+        ui.with_layout(layout, |ui| {
+            let b_scan_segmentation = self.b_scan_segmentation_rx.as_ref().map(|rx| rx.borrow());
 
-                let gpu_viewport = Rect::from_min_max(
-                    n_viewport.min * 2.0 - Vec2::splat(1.0),
-                    n_viewport.max * 2.0 - Vec2::splat(1.0),
-                );
-
-                ui.painter()
-                    .add(eframe::egui_wgpu::Callback::new_paint_callback(
-                        response.rect,
-                        PaintCallback {
-                            texture_bind_group: texture_bind_group.clone(),
-                            texture_count: textures_state.textures.len(),
-                            a_scan_count: textures_state.a_scan_count,
-                            rect: gpu_viewport,
-                        },
-                    ));
-
-                if let Some(b_scan_segmentation_rx) = self.b_scan_segmentation_rx.as_ref() {
-                    let b_scan_segmentation = b_scan_segmentation_rx.borrow();
-
-                    for b_scan in b_scan_segmentation.iter() {
-                        let x = (*b_scan as f32) / (textures_state.a_scan_count as f32);
-                        let x = x * viewport.width() + viewport.min.x;
-
-                        ui.painter().line_segment(
-                            [pos2(x, viewport.min.y), pos2(x, viewport.max.y)],
-                            Stroke::new(1.0, egui::Color32::BLUE),
-                        );
-                    }
+            if let Some(b_scan_segmentation) = b_scan_segmentation {
+                if b_scan_segmentation.len() > 1 {
+                    cartesian_m_scan_ui(
+                        ui,
+                        textures_state,
+                        texture_bind_group.clone(),
+                        b_scan_segmentation.as_slice(),
+                    )
                 }
-            });
+            }
+
+            let b_scan_segmentation = self.b_scan_segmentation_rx.as_ref().map(|rx| rx.borrow());
+
+            polar_m_scan_ui(
+                ui,
+                textures_state,
+                texture_bind_group.clone(),
+                b_scan_segmentation.as_deref().map(|rx| rx.as_slice()),
+            );
+        });
 
         if textures_state.working {
             ui.ctx().request_repaint();
         }
     }
+}
+
+fn polar_m_scan_ui(
+    ui: &mut egui::Ui,
+    textures_state: &TexturesState,
+    texture_bind_group: Arc<wgpu::BindGroup>,
+    b_scan_segmentation: Option<&[usize]>,
+) {
+    PanZoomRect::new()
+        .zoom_y(false)
+        .min_zoom(1.0)
+        .show(ui, |ui, viewport, n_viewport| {
+            let response = ui.allocate_rect(ui.max_rect(), Sense::hover());
+
+            let gpu_viewport = Rect::from_min_max(
+                n_viewport.min * 2.0 - Vec2::splat(1.0),
+                n_viewport.max * 2.0 - Vec2::splat(1.0),
+            );
+
+            ui.painter()
+                .add(eframe::egui_wgpu::Callback::new_paint_callback(
+                    response.rect,
+                    PolarViewPaintCallback {
+                        texture_bind_group,
+                        texture_count: textures_state.textures.len(),
+                        a_scan_count: textures_state.a_scan_count,
+                        rect: gpu_viewport,
+                    },
+                ));
+
+            if let Some(b_scan_segmentation) = b_scan_segmentation {
+                for b_scan in b_scan_segmentation {
+                    let x = (*b_scan as f32) / (textures_state.a_scan_count as f32);
+                    let x = x * viewport.width() + viewport.min.x;
+
+                    ui.painter().line_segment(
+                        [pos2(x, viewport.min.y), pos2(x, viewport.max.y)],
+                        Stroke::new(1.0, egui::Color32::BLUE),
+                    );
+                }
+            }
+        });
+}
+
+fn cartesian_m_scan_ui(
+    ui: &mut egui::Ui,
+    textures_state: &TexturesState,
+    texture_bind_group: Arc<wgpu::BindGroup>,
+    b_scan_segmentation: &[usize],
+) {
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::splat(ui.available_height().min(ui.available_width())),
+        Sense::hover(),
+    );
+
+    let current_b_scan = get_current_b_scan(ui, response, b_scan_segmentation.len());
+
+    ui.painter()
+        .add(eframe::egui_wgpu::Callback::new_paint_callback(
+            rect,
+            CartesianViewPaintCallback {
+                texture_bind_group,
+                texture_count: textures_state.textures.len(),
+                a_scan_count: textures_state.a_scan_count,
+                b_scan_start: b_scan_segmentation[current_b_scan],
+                b_scan_end: b_scan_segmentation[current_b_scan + 1],
+            },
+        ));
+}
+
+fn get_current_b_scan(ui: &mut egui::Ui, response: Response, b_scan_count: usize) -> usize {
+    if b_scan_count <= 2 {
+        return 0;
+    }
+
+    let id = ui.id().with("current_b_scan");
+
+    let mut current_b_scan = ui.data(|d| d.get_temp::<isize>(id)).unwrap_or(0);
+
+    if response.hovered() {
+        let scroll_delta = ui.input(|i| {
+            i.events
+                .iter()
+                .filter_map(|e| match *e {
+                    egui::Event::MouseWheel { delta, .. } => Some((delta.x + delta.y) as isize),
+                    _ => None,
+                })
+                .sum::<isize>()
+        });
+
+        current_b_scan += scroll_delta;
+    }
+
+    current_b_scan = current_b_scan.clamp(0, b_scan_count as isize - 2);
+
+    ui.data_mut(|d| d.insert_temp(id, current_b_scan));
+
+    current_b_scan as usize
 }
 
 fn find_m_scan_input(pipeline: &Pipeline, node_id: NodeId) -> Option<NodeOutput> {
@@ -230,16 +320,16 @@ fn find_m_scan_input(pipeline: &Pipeline, node_id: NodeId) -> Option<NodeOutput>
     find_m_scan_input(pipeline, node_id, &mut seen_nodes)
 }
 
-// MARK: PaintCallback
+// MARK: PolarViewPaintCallback
 
-struct PaintCallback {
+struct PolarViewPaintCallback {
     texture_bind_group: Arc<wgpu::BindGroup>,
     texture_count: usize,
     a_scan_count: usize,
     rect: Rect,
 }
 
-impl eframe::egui_wgpu::CallbackTrait for PaintCallback {
+impl eframe::egui_wgpu::CallbackTrait for PolarViewPaintCallback {
     fn paint<'a>(
         &'a self,
         _info: egui::PaintCallbackInfo,
@@ -255,7 +345,7 @@ impl eframe::egui_wgpu::CallbackTrait for PaintCallback {
             texture_count: u32,
         }
 
-        render_pass.set_pipeline(&resources.pipeline);
+        render_pass.set_pipeline(&resources.polar_view_pipeline);
         render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
         render_pass.set_push_constants(
             wgpu::ShaderStages::all(),
@@ -267,6 +357,48 @@ impl eframe::egui_wgpu::CallbackTrait for PaintCallback {
                     self.rect.max.x,
                     self.rect.max.y,
                 ],
+                texture_count: self.texture_count as u32,
+            }]),
+        );
+        render_pass.draw(0..6, 0..1);
+    }
+}
+
+// MARK: CartesianViewPaintCallback
+
+struct CartesianViewPaintCallback {
+    texture_bind_group: Arc<wgpu::BindGroup>,
+    texture_count: usize,
+    a_scan_count: usize,
+    b_scan_start: usize,
+    b_scan_end: usize,
+}
+
+impl eframe::egui_wgpu::CallbackTrait for CartesianViewPaintCallback {
+    fn paint<'a>(
+        &'a self,
+        _info: egui::PaintCallbackInfo,
+        render_pass: &mut wgpu::RenderPass<'a>,
+        callback_resources: &'a eframe::egui_wgpu::CallbackResources,
+    ) {
+        let resources = callback_resources.get::<SharedResources>().unwrap();
+
+        #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+        #[repr(C)]
+        struct Constants {
+            b_scan_start: u32,
+            b_scan_end: u32,
+            texture_count: u32,
+        }
+
+        render_pass.set_pipeline(&resources.cartesian_view_pipeline);
+        render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
+        render_pass.set_push_constants(
+            wgpu::ShaderStages::all(),
+            0,
+            bytemuck::cast_slice(&[Constants {
+                b_scan_start: self.b_scan_start as u32,
+                b_scan_end: self.b_scan_end as u32,
                 texture_count: self.texture_count as u32,
             }]),
         );
@@ -505,7 +637,8 @@ struct TexturesState {
 // MARK: SharedResources
 
 struct SharedResources {
-    pipeline: wgpu::RenderPipeline,
+    polar_view_pipeline: wgpu::RenderPipeline,
+    cartesian_view_pipeline: wgpu::RenderPipeline,
     bind_group_layout: Arc<wgpu::BindGroupLayout>,
 }
 
@@ -525,8 +658,26 @@ impl SharedResources {
             }],
         });
 
+        let polar_view_pipeline =
+            Self::create_polar_view_pipeline(device, target_format, &bind_group_layout);
+
+        let cartesian_view_pipeline =
+            Self::create_cartesian_view_pipeline(device, target_format, &bind_group_layout);
+
+        Self {
+            polar_view_pipeline,
+            cartesian_view_pipeline,
+            bind_group_layout: Arc::new(bind_group_layout),
+        }
+    }
+
+    fn create_polar_view_pipeline(
+        device: &wgpu::Device,
+        target_format: &wgpu::TextureFormat,
+        bind_group_layout: &wgpu::BindGroupLayout,
+    ) -> wgpu::RenderPipeline {
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("MScan Pipeline Layout"),
+            label: Some("MScan Polar Pipeline Layout"),
             bind_group_layouts: &[&bind_group_layout],
             push_constant_ranges: &[PushConstantRange {
                 stages: wgpu::ShaderStages::all(),
@@ -536,19 +687,19 @@ impl SharedResources {
 
         let shader = device.create_shader_module(wgpu::include_wgsl!("m_scan.wgsl"));
 
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("MScan Render Pipeline"),
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("MScan Polar Render Pipeline"),
             layout: Some(&pipeline_layout),
             depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: "polar_vs_main",
                 buffers: &[],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: "polar_fs_main",
                 targets: &[Some((*target_format).into())],
             }),
             multiview: None,
@@ -556,11 +707,45 @@ impl SharedResources {
                 topology: wgpu::PrimitiveTopology::TriangleList,
                 ..Default::default()
             },
+        })
+    }
+
+    fn create_cartesian_view_pipeline(
+        device: &wgpu::Device,
+        target_format: &wgpu::TextureFormat,
+        bind_group_layout: &wgpu::BindGroupLayout,
+    ) -> wgpu::RenderPipeline {
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("MScan Cartesian Pipeline Layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[PushConstantRange {
+                stages: wgpu::ShaderStages::all(),
+                range: 0..20,
+            }],
         });
 
-        Self {
-            pipeline,
-            bind_group_layout: Arc::new(bind_group_layout),
-        }
+        let shader = device.create_shader_module(wgpu::include_wgsl!("m_scan.wgsl"));
+
+        device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("MScan Cartesian Render Pipeline"),
+            layout: Some(&pipeline_layout),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: "cartesian_vs_main",
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: "cartesian_fs_main",
+                targets: &[Some((*target_format).into())],
+            }),
+            multiview: None,
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+        })
     }
 }
