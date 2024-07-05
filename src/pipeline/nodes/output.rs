@@ -7,7 +7,7 @@ use tokio::{
     sync::{watch, Notify},
 };
 
-use crate::queue_channel::error::RecvError;
+use crate::{pipeline::types::DataType, queue_channel::error::RecvError};
 
 use super::prelude::*;
 
@@ -23,6 +23,7 @@ pub enum Progress {
 pub struct Node {
     pub path: PathBuf,
     pub input_type: PipelineDataType,
+    pub scan_data_type: DataType,
     pub notify: Arc<Notify>,
 
     pub input: NodeInput<()>,
@@ -35,6 +36,7 @@ impl Default for Node {
         Self {
             path: PathBuf::new(),
             input_type: PipelineDataType::RawMScan,
+            scan_data_type: DataType::U16,
             input: NodeInput::default(),
             notify: Arc::new(Notify::new()),
             progress_rx: None,
@@ -53,7 +55,9 @@ impl PipelineNode for Node {
     type OutputId = OutputIdNone;
 
     fn changed(&self, other: &Self) -> bool {
-        self.path != other.path || self.input_type != other.input_type
+        self.path != other.path
+            || self.input_type != other.input_type
+            || self.scan_data_type != other.scan_data_type
     }
 
     fn inputs(
@@ -69,6 +73,7 @@ impl PipelineNode for Node {
 
         builder.task(Task {
             path: self.path.clone(),
+            scan_data_type: self.scan_data_type,
             notifier: self.notify.clone(),
             progress_tx,
             input: match self.input_type {
@@ -106,6 +111,7 @@ impl TaskInputType {
 
 struct Task {
     path: PathBuf,
+    scan_data_type: DataType,
     notifier: Arc<Notify>,
 
     input: TaskInputType,
@@ -170,6 +176,7 @@ impl NodeTask for Task {
 
     fn sync_node(&mut self, node: &Self::PipelineNode) {
         self.path = node.path.clone();
+        self.scan_data_type = node.scan_data_type;
     }
 
     async fn run(&mut self) -> anyhow::Result<()> {
@@ -197,6 +204,8 @@ impl NodeTask for Task {
                         Err(e) => Err(e)?,
                         Ok(scan) => scan,
                     };
+
+                    let scan = scan.cast_rescale_par(self.scan_data_type);
 
                     file.write_all(scan.as_u8_slice()).await?;
 
@@ -237,6 +246,8 @@ impl NodeTask for Task {
                         Err(e) => Err(e)?,
                         Ok(scan) => scan,
                     };
+
+                    let scan = scan.cast_rescale_par(self.scan_data_type);
 
                     file.write_all(scan.as_u8_slice()).await?;
 

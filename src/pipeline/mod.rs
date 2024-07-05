@@ -30,7 +30,7 @@ impl_enum_from_into_id_types!(PipelineDataType, [TypeId], {
 });
 
 impl PipelineDataType {
-    const VALUES: [PipelineDataType; 4] = [
+    pub const VALUES: [PipelineDataType; 4] = [
         PipelineDataType::RawMScan,
         PipelineDataType::DataVector,
         PipelineDataType::MScan,

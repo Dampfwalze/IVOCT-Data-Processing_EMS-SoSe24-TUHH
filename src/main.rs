@@ -31,7 +31,7 @@ async fn main() {
                         | wgpu::Features::SAMPLED_TEXTURE_AND_STORAGE_BUFFER_ARRAY_NON_UNIFORM_INDEXING,
                     required_limits: wgpu::Limits {
                         max_texture_dimension_2d: 12000,
-                        max_sampled_textures_per_shader_stage: 100,
+                        max_sampled_textures_per_shader_stage: view::views::m_scan::MAX_TEXTURES as _,
                         max_push_constant_size: 28,
                         ..Default::default()
                     },

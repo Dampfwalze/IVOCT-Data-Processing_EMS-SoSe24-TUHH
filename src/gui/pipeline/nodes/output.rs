@@ -1,6 +1,9 @@
 use egui::{Color32, ProgressBar};
 
-use crate::{gui::widgets::PathInputAction, pipeline::nodes::output::*};
+use crate::{
+    gui::widgets::PathInputAction,
+    pipeline::{nodes::output::*, types::DataType},
+};
 
 use super::prelude::*;
 
@@ -40,6 +43,20 @@ impl EditNode for Node {
                 });
             },
         );
+
+        if let PipelineDataType::RawMScan | PipelineDataType::MScan = self.input_type {
+            NodeComboBox::from_id_source(ui.id().with("input_type"))
+                .selected_text(format!("{}", self.scan_data_type))
+                .show_ui(ui, |ui| {
+                    for scan_data_type in DataType::VALUES {
+                        ui.selectable_value(
+                            &mut self.scan_data_type,
+                            scan_data_type,
+                            format!("{}", scan_data_type),
+                        );
+                    }
+                });
+        }
 
         ui.add(PathInput::new(&mut self.path).action(PathInputAction::SaveFile));
 

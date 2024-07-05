@@ -84,6 +84,14 @@ fn polar_fs_main(in: VertexOut) -> @location(0) vec4<f32>{
     return vec4<f32>(vec3<f32>(pixel), 1.0);
 }
 
+// Concept:
+// let pos = vector from center to fragment
+//
+// let distance: 0..1 = norm(pos)
+// let alpha: 0..1 = ((axes angle of pos) + pi) / 2pi
+//
+// let a_scan_idx = b_scan_start + alpha * (b_scan_end - b_scan_start)
+// let a_scan_sample_idx = distance * a_scan_length
 @fragment
 fn cartesian_fs_main(in: VertexOut) -> @location(0) vec4<f32>{
     let pi = radians(180.0);
@@ -96,14 +104,12 @@ fn cartesian_fs_main(in: VertexOut) -> @location(0) vec4<f32>{
 
     let pos = in.uv * 2.0 - 1.0;
 
-    let distance = distance(pos, vec2<f32>(0.0));
+    let distance = length(pos);
     if (distance >= 1.0) {
         discard;
     }
 
     let alpha = (atan2(pos.x, pos.y) + pi) / two_pi;
-
-    let a_scan_idx = cart_consts.b_scan_start + u32(alpha * f32(cart_consts.b_scan_end - cart_consts.b_scan_start));
 
     let pixel = load_m_scan(
         cart_consts.b_scan_start + u32(alpha * f32(cart_consts.b_scan_end - cart_consts.b_scan_start)),
@@ -133,10 +139,8 @@ fn side_fs_main(in: VertexOut) -> @location(0) vec4<f32>{
 
     let tex_row = u32(floor(f32(tex_dim.x) * abs(in.uv.y - 0.5) * 2.0));
 
-    let global_a_scan_idx = b_scan_start + a_scan_idx;
-
     let pixel = load_m_scan(
-        global_a_scan_idx,
+        b_scan_start + a_scan_idx,
         tex_row,
         side_consts.tex_count,
         tex_dim
@@ -145,6 +149,7 @@ fn side_fs_main(in: VertexOut) -> @location(0) vec4<f32>{
     return vec4<f32>(vec3<f32>(pixel), 1.0);
 }
 
+/// Load a sample from the m-scan texture array.
 fn load_m_scan(a_scan_idx: u32, sample_idx: u32, tex_count: u32, tex_dim: vec2<u32>) -> f32 {
     let tex_idx = a_scan_idx / tex_dim.y;
     let tex_column = a_scan_idx % tex_dim.y;

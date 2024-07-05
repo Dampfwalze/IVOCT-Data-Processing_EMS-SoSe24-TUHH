@@ -335,7 +335,7 @@ where
         .zip(matrix.par_column_iter())
         .for_each(|(mut r, x)| {
             for (r, x) in r.iter_mut().zip(x.iter()) {
-                *r = num_traits::cast((*x * max).clamp(A::zero(), max)).unwrap();
+                *r = num_traits::cast((*x * max).clamp(A::zero(), max)).unwrap_or(B::zero());
             }
         });
 

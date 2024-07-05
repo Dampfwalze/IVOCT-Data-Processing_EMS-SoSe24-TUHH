@@ -8,6 +8,11 @@ use futures::future;
 use tokio::sync::{watch, RwLock};
 use wgpu::{util::DeviceExt, PushConstantRange};
 
+/// WGPU requires to specify a maximum number of textures we can bind in a
+/// texture array. When we exceed this number, the remaining textures are not
+/// rendered.
+pub const MAX_TEXTURES: usize = 100;
+
 pub enum InputId {
     MScan,
     BScanSegmentation,
@@ -560,7 +565,7 @@ impl eframe::egui_wgpu::CallbackTrait for PolarViewPaintCallback {
             wgpu::ShaderStages::FRAGMENT,
             16,
             bytemuck::cast_slice(&[Constants {
-                tex_count: self.texture_count as u32,
+                tex_count: self.texture_count.min(MAX_TEXTURES) as u32,
                 a_scan_count: self.a_scan_count as u32,
             }]),
         );
@@ -611,7 +616,7 @@ impl eframe::egui_wgpu::CallbackTrait for CartesianViewPaintCallback {
             wgpu::ShaderStages::FRAGMENT,
             16,
             bytemuck::cast_slice(&[Constants {
-                tex_count: self.texture_count as u32,
+                tex_count: self.texture_count.min(MAX_TEXTURES) as u32,
                 b_scan_start: self.b_scan_start as u32,
                 b_scan_end: self.b_scan_end as u32,
             }]),
@@ -663,7 +668,7 @@ impl eframe::egui_wgpu::CallbackTrait for SideViewPaintCallback {
             wgpu::ShaderStages::FRAGMENT,
             16,
             bytemuck::cast_slice(&[Constants {
-                tex_count: self.texture_count as u32,
+                tex_count: self.texture_count.min(MAX_TEXTURES) as u32,
                 view_rot: self.view_rotation,
             }]),
         );
@@ -869,7 +874,11 @@ impl Task {
                 entries: &[wgpu::BindGroupEntry {
                     binding: 0,
                     resource: wgpu::BindingResource::TextureViewArray(
-                        &textures.iter().map(|t| t).collect::<Vec<_>>(),
+                        &textures
+                            .iter()
+                            .take(MAX_TEXTURES)
+                            .map(|t| t)
+                            .collect::<Vec<_>>(),
                     ),
                 }],
             });
@@ -921,7 +930,7 @@ impl SharedResources {
                     view_dimension: wgpu::TextureViewDimension::D2,
                     multisampled: false,
                 },
-                count: NonZeroU32::new(100),
+                count: NonZeroU32::new(MAX_TEXTURES as u32),
             }],
         });
 

@@ -30,7 +30,10 @@ impl EditNodeGraph for Pipeline {
         let id = id + 1;
 
         let node: Box<dyn DynPipelineNode> = match path {
-            "In Out/Raw M Scan Input" => Box::new(binary_input::Node::m_scan(PathBuf::new(), None)),
+            "In Out/Raw M Scan Input" => {
+                Box::new(binary_input::Node::raw_m_scan(PathBuf::new(), None))
+            }
+            "In Out/M Scan Input" => Box::new(binary_input::Node::m_scan(PathBuf::new(), None)),
             "In Out/Binary Vector Input" => {
                 Box::new(binary_input::Node::data_vector(PathBuf::new()))
             }
@@ -50,6 +53,7 @@ impl EditNodeGraph for Pipeline {
     fn addable_nodes(&self) -> Vec<&'static str> {
         vec![
             "In Out/Raw M Scan Input",
+            "In Out/M Scan Input",
             "In Out/Binary Vector Input",
             "In Out/Output",
             "Process/Process Raw M Scan",

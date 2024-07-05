@@ -10,6 +10,7 @@ impl fmt::Display for OutputId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             OutputId::RawMScan => write!(f, "Raw M scan"),
+            OutputId::MScan => write!(f, "M scan"),
             OutputId::DataVector => write!(f, "Data vector"),
         }
     }
@@ -61,10 +62,10 @@ impl EditNode for Node {
         NodeComboBox::from_id_source(ui.id().with("input_type"))
             .selected_text(format!("{}", self.input_type))
             .show_ui(ui, |ui| {
-                for input_type in &[OutputId::RawMScan, OutputId::DataVector] {
+                for input_type in OutputId::VALUES {
                     ui.selectable_value(
                         &mut self.input_type,
-                        *input_type,
+                        input_type,
                         format!("{}", input_type),
                     );
                 }
@@ -80,7 +81,7 @@ impl EditNode for Node {
 
         ui.add(PathInput::new(&mut self.path));
 
-        if let OutputId::RawMScan = self.input_type {
+        if let OutputId::RawMScan | OutputId::MScan = self.input_type {
             ui.add(
                 DragValue::new(&mut self.a_scan_length)
                     .speed(1)

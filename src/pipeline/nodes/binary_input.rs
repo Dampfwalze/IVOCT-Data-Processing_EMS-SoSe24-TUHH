@@ -1,4 +1,7 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use futures::FutureExt;
 use tokio::{fs, io::AsyncReadExt, sync::watch};
@@ -11,18 +14,25 @@ use super::prelude::*;
 pub enum OutputId {
     #[default]
     RawMScan,
+    MScan,
     DataVector,
+}
+
+impl OutputId {
+    pub const VALUES: [OutputId; 3] = [OutputId::RawMScan, OutputId::MScan, OutputId::DataVector];
 }
 
 impl_enum_from_into_id_types!(OutputId, [graph::OutputId], {
     0 => RawMScan,
-    1 => DataVector,
+    1 => MScan,
+    2 => DataVector,
 });
 
 impl OutputId {
     pub fn data_type(&self) -> PipelineDataType {
         match self {
             OutputId::RawMScan => PipelineDataType::RawMScan,
+            OutputId::MScan => PipelineDataType::MScan,
             OutputId::DataVector => PipelineDataType::DataVector,
         }
     }
@@ -41,12 +51,22 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn m_scan(path: PathBuf, a_scan_length: Option<usize>) -> Self {
+    pub fn raw_m_scan(path: PathBuf, a_scan_length: Option<usize>) -> Self {
         Self {
             path,
             input_type: OutputId::RawMScan,
             data_type: DataType::U16,
             a_scan_length: a_scan_length.unwrap_or(1024),
+            progress_rx: None,
+        }
+    }
+
+    pub fn m_scan(path: PathBuf, a_scan_length: Option<usize>) -> Self {
+        Self {
+            path,
+            input_type: OutputId::MScan,
+            data_type: DataType::U16,
+            a_scan_length: a_scan_length.unwrap_or(512),
             progress_rx: None,
         }
     }
@@ -95,6 +115,7 @@ impl PipelineNode for Node {
 
     fn create_node_task(&mut self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>) {
         let raw_scan_out = builder.output(OutputId::RawMScan);
+        let m_scan_out = builder.output(OutputId::MScan);
         let data_vector_out = builder.output(OutputId::DataVector);
 
         let (progress_tx, progress_rx) = watch::channel(None);
@@ -103,6 +124,7 @@ impl PipelineNode for Node {
 
         builder.task(Task {
             raw_scan_out,
+            m_scan_out,
             data_vector_out,
             path: self.path.clone(),
             input_type: self.input_type,
@@ -117,6 +139,7 @@ impl PipelineNode for Node {
 
 struct Task {
     raw_scan_out: TaskOutput<requests::RawMScan>,
+    m_scan_out: TaskOutput<requests::MScan>,
     data_vector_out: TaskOutput<requests::VectorData>,
 
     path: PathBuf,
@@ -155,6 +178,13 @@ impl NodeTask for Task {
                     }
                 }
             }
+            OutputId::MScan => {
+                tokio::select! {
+                    _req = self.m_scan_out.receive() => {
+                        self.respond_to_m_scan().await?;
+                    }
+                }
+            }
             OutputId::DataVector => {
                 tokio::select! {
                     _req = self.data_vector_out.receive() => {
@@ -186,29 +216,64 @@ impl Task {
     }
 
     async fn respond_to_raw_m_scan(&mut self) -> anyhow::Result<()> {
+        Self::respond_streamed(
+            &mut self.progress_tx,
+            &self.path,
+            self.data_type,
+            self.a_scan_length,
+            |resp, a_scan_count| {
+                self.raw_scan_out.respond(requests::RawMScanResponse {
+                    data: resp,
+                    a_scan_samples: self.a_scan_length,
+                    a_scan_count,
+                });
+                self.raw_scan_out.receive().now_or_never();
+            },
+        )
+        .await
+    }
+
+    async fn respond_to_m_scan(&mut self) -> anyhow::Result<()> {
+        Self::respond_streamed(
+            &mut self.progress_tx,
+            &self.path,
+            self.data_type,
+            self.a_scan_length,
+            |resp, a_scan_count| {
+                self.m_scan_out.respond(requests::MScanResponse {
+                    data: resp,
+                    a_scan_samples: self.a_scan_length,
+                    a_scan_count,
+                });
+                self.m_scan_out.receive().now_or_never();
+            },
+        )
+        .await
+    }
+
+    async fn respond_streamed(
+        progress_tx: &mut watch::Sender<Option<f32>>,
+        path: &Path,
+        data_type: DataType,
+        a_scan_length: usize,
+        respond: impl FnOnce(requests::StreamedResponse<Arc<DataMatrix>>, usize),
+    ) -> anyhow::Result<()> {
         const CHUNK_SIZE: usize = 12000;
 
-        let mut file = fs::File::open(&self.path).await?;
+        let mut file = fs::File::open(path).await?;
 
         let (output, tx) = requests::StreamedResponse::new(200);
 
-        let _ = self.progress_tx.send(Some(0.0));
+        let _ = progress_tx.send(Some(0.0));
 
         let file_len = file.metadata().await?.len() as usize;
 
-        self.raw_scan_out.respond(requests::RawMScanResponse {
-            data: output,
-            a_scan_samples: self.a_scan_length,
-            a_scan_count: file_len / self.a_scan_length as usize / self.data_type.size(),
-        });
-
-        self.raw_scan_out.receive().now_or_never();
+        respond(output, file_len / a_scan_length / data_type.size());
 
         let mut bytes_read = 0;
 
         loop {
-            let mut data =
-                DataMatrix::from_data_type(self.data_type, self.a_scan_length, CHUNK_SIZE);
+            let mut data = DataMatrix::from_data_type(data_type, a_scan_length, CHUNK_SIZE);
 
             let mut index = 0;
 
@@ -218,7 +283,7 @@ impl Task {
                     len => index += len,
                 }
             }
-            let ncols = index / self.a_scan_length / self.data_type.size();
+            let ncols = index / a_scan_length / data_type.size();
 
             if ncols < CHUNK_SIZE {
                 if index == 0 {
@@ -230,14 +295,12 @@ impl Task {
             }
 
             bytes_read += index;
-            let _ = self
-                .progress_tx
-                .send(Some(bytes_read as f32 / file_len as f32));
+            let _ = progress_tx.send(Some(bytes_read as f32 / file_len as f32));
 
             tx.send(Arc::new(data));
         }
 
-        let _ = self.progress_tx.send(None);
+        let _ = progress_tx.send(None);
 
         Ok(())
     }
