@@ -17,6 +17,7 @@ impl fmt::Display for FilterType {
             FilterType::Median => write!(f, "Median"),
             FilterType::AlignBrightness => write!(f, "Align Brightness"),
             FilterType::Wiener => write!(f, "Wiener"),
+            FilterType::Prewitt => write!(f, "Prewitt"),
         }
     }
 }
@@ -31,6 +32,7 @@ impl EditNode for Node {
             FilterType::Median => "Median Filter",
             FilterType::AlignBrightness => "Align Brightness",
             FilterType::Wiener => "Wiener Filter",
+            FilterType::Prewitt => "Prewitt Filter",
         }
     }
 
@@ -116,6 +118,14 @@ impl EditNode for Node {
                     DragVector::new([&mut size.x, &mut size.y])
                         .clamp_range(1..=100)
                         .prefix(["Rows: ", "Columns: "]),
+                );
+            }
+            FilterType::Prewitt => {
+                ui.add(
+                    DragValue::new(&mut self.prewitt_settings.threshold)
+                        .speed(0.01)
+                        .clamp_range(0.0..=1.0)
+                        .prefix("Threshold: "),
                 );
             }
         }

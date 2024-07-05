@@ -1,13 +1,15 @@
 use std::{
     borrow::Cow,
+    fmt::Display,
     iter::Sum,
     ops::{AddAssign, Div, MulAssign},
     sync::Arc,
 };
 
 use futures::FutureExt;
-use nalgebra::{DMatrix, DMatrixView, Scalar, Vector2};
+use nalgebra::{DMatrix, DMatrixView, Matrix3, Scalar, Vector2};
 use num_traits::Float;
+use simba::scalar::SupersetOf;
 use tokio::sync::watch;
 
 use crate::{
@@ -25,14 +27,16 @@ pub enum FilterType {
     Median,
     AlignBrightness,
     Wiener,
+    Prewitt,
 }
 
 impl FilterType {
-    pub const VALUES: [FilterType; 4] = [
+    pub const VALUES: [FilterType; 5] = [
         FilterType::Gaussian,
         FilterType::Median,
         FilterType::AlignBrightness,
         FilterType::Wiener,
+        FilterType::Prewitt,
     ];
 }
 
@@ -52,6 +56,11 @@ pub struct WienerSettings {
     pub neighborhood_size: Vector2<usize>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct PrewittSettings {
+    pub threshold: f32,
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub filter_type: FilterType,
@@ -62,6 +71,8 @@ pub struct Node {
     pub median_settings: MedianSettings,
     #[serde(default)]
     pub wiener_settings: WienerSettings,
+    #[serde(default)]
+    pub prewitt_settings: PrewittSettings,
 
     #[serde(skip)]
     pub progress_rx: Option<watch::Receiver<Option<f32>>>,
@@ -84,6 +95,10 @@ impl Node {
 
     pub fn wiener() -> Self {
         Self::new(FilterType::Wiener)
+    }
+
+    pub fn prewitt() -> Self {
+        Self::new(FilterType::Prewitt)
     }
 
     pub fn new(filter_type: FilterType) -> Self {
@@ -119,6 +134,12 @@ impl Default for WienerSettings {
     }
 }
 
+impl Default for PrewittSettings {
+    fn default() -> Self {
+        Self { threshold: 0.0 }
+    }
+}
+
 deserialize_node!(Node, "filter");
 
 impl PipelineNode for Node {
@@ -142,6 +163,7 @@ impl PipelineNode for Node {
                 FilterType::Median => self.median_settings != other.median_settings,
                 FilterType::AlignBrightness => false,
                 FilterType::Wiener => self.wiener_settings != other.wiener_settings,
+                FilterType::Prewitt => self.prewitt_settings != other.prewitt_settings,
             }
     }
 
@@ -161,6 +183,7 @@ impl PipelineNode for Node {
             gauss_settings: self.gauss_settings,
             median_settings: self.median_settings,
             wiener_settings: self.wiener_settings,
+            prewitt_settings: self.prewitt_settings,
             progress_tx: progress_tx,
             m_scan_out,
             m_scan_in: TaskInput::default(),
@@ -174,6 +197,7 @@ struct Task {
     gauss_settings: GaussSettings,
     median_settings: MedianSettings,
     wiener_settings: WienerSettings,
+    prewitt_settings: PrewittSettings,
 
     progress_tx: watch::Sender<Option<f32>>,
 
@@ -198,6 +222,7 @@ impl NodeTask for Task {
         self.gauss_settings = node.gauss_settings;
         self.median_settings = node.median_settings;
         self.wiener_settings = node.wiener_settings;
+        self.prewitt_settings = node.prewitt_settings;
     }
 
     fn invalidate(&mut self, _cause: InvalidationCause) {
@@ -217,6 +242,7 @@ impl NodeTask for Task {
             let gauss_settings = self.gauss_settings;
             let median_settings = self.median_settings;
             let wiener_settings = self.wiener_settings;
+            let prewitt_settings = self.prewitt_settings;
             let filter_type = self.filter_type;
 
             let (res, tx) = requests::StreamedResponse::new(100);
@@ -305,6 +331,23 @@ impl NodeTask for Task {
                             }
                             DataMatrix::F64(matrix) => {
                                 compute_wiener_par(matrix.as_view(), &wiener_settings).into()
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                    FilterType::Prewitt => {
+                        let m_scan: Cow<DataMatrix> = if m_scan.data_type().is_integer() {
+                            Cow::Owned(m_scan.cast_rescale_par(types::DataType::F32))
+                        } else {
+                            Cow::Borrowed(m_scan.as_ref())
+                        };
+
+                        match m_scan.as_ref() {
+                            DataMatrix::F32(matrix) => {
+                                compute_prewitt_par(matrix.as_view(), &prewitt_settings).into()
+                            }
+                            DataMatrix::F64(matrix) => {
+                                compute_prewitt_par(matrix.as_view(), &prewitt_settings).into()
                             }
                             _ => unreachable!(),
                         }
@@ -553,4 +596,53 @@ where
         });
 
     result
+}
+
+fn compute_prewitt_par<T>(matrix: DMatrixView<T>, settings: &PrewittSettings) -> DMatrix<T>
+where
+    T: Scalar
+        + Float
+        + Send
+        + Sync
+        + Copy
+        + AddAssign
+        + num_traits::NumCast
+        + PartialOrd
+        + SupersetOf<f32>
+        + 'static,
+{
+    use rayon::prelude::*;
+
+    let threshold = num_traits::cast(settings.threshold).unwrap();
+
+    let kernel_x: Matrix3<T> = Matrix3::new(
+        1.0, 0.0, -1.0, //
+        1.0, 0.0, -1.0, //
+        1.0, 0.0, -1.0, //
+    )
+    .cast();
+
+    let kernel_y = kernel_x.transpose();
+
+    let mut result_x = convolve_par(&matrix, &kernel_x);
+    let result_y = convolve_par(&matrix, &kernel_y);
+
+    result_x
+        .par_column_iter_mut()
+        .zip(result_y.par_column_iter())
+        .for_each(|(mut col_x, col_y)| {
+            for (value_x, value_y) in col_x.iter_mut().zip(col_y.iter()) {
+                let (x, y) = (*value_x, *value_y);
+
+                let magnitude = (x * x + y * y).sqrt();
+
+                *value_x = if magnitude > threshold {
+                    magnitude
+                } else {
+                    T::zero()
+                };
+            }
+        });
+
+    result_x
 }
