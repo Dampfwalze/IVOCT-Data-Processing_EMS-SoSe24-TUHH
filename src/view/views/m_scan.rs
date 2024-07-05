@@ -363,7 +363,7 @@ fn cartesian_m_scan_ui(
 
     let center = rect.center();
     let vec = rect.width() / 2.0 * Vec2::angled(current_rotation * std::f32::consts::TAU);
-    let vec = vec2(-vec.y, vec.x);
+    let vec = vec2(vec.y, vec.x);
 
     ui.painter().line_segment(
         [center + vec, center + 0.8 * vec],
