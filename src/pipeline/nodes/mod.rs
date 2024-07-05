@@ -76,6 +76,8 @@ pub trait DynPipelineNode: DynEditNode + Send + Sync + 'static {
 
     fn as_any(&self) -> &dyn any::Any;
 
+    fn as_any_mut(&mut self) -> &mut dyn any::Any;
+
     fn as_debug(&self) -> &dyn fmt::Debug;
 
     fn clone_boxed(&self) -> Box<dyn DynPipelineNode>;
@@ -101,6 +103,10 @@ impl<T: PipelineNode> DynPipelineNode for T {
     }
 
     fn as_any(&self) -> &dyn any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn any::Any {
         self
     }
 

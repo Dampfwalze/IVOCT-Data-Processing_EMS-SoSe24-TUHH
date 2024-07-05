@@ -7,7 +7,7 @@ use crate::{
         node_graph::{NodeGraphEditState, NodeGraphEditor},
     },
     node_graph::NodeId,
-    pipeline,
+    pipeline::{self, nodes},
     view::{
         execution::executor::ViewsExecutor,
         views,
@@ -43,8 +43,7 @@ impl IVOCTTestApp {
             None => pipeline::presets::PHANTOM_1_1_3.into(),
         };
 
-        let (pipeline, state) = serde_json::from_str(&pipeline_json)
-            .unwrap_or_else(|_| (pipeline::Pipeline::new(), NodeGraphEditState::new()));
+        let (pipeline, state) = Self::load_pipeline(&pipeline_json);
 
         IVOCTTestApp {
             pipeline,
@@ -65,10 +64,30 @@ impl IVOCTTestApp {
         }
     }
 
-    fn load_pipeline(&mut self, pipeline_json: &str) {
-        let (pipeline, state) = serde_json::from_str(pipeline_json)
+    fn load_pipeline(pipeline_json: &str) -> (pipeline::Pipeline, NodeGraphEditState) {
+        let (mut pipeline, state) = serde_json::from_str(pipeline_json)
             .unwrap_or_else(|_| (pipeline::Pipeline::new(), NodeGraphEditState::new()));
 
+        // Clear all path that do not exist
+        for (_, node) in &mut pipeline.nodes {
+            if let Some(node) = node
+                .as_any_mut()
+                .downcast_mut::<nodes::binary_input::Node>()
+            {
+                if !node.path.exists() {
+                    node.path = "".into();
+                }
+            } else if let Some(node) = node.as_any_mut().downcast_mut::<nodes::output::Node>() {
+                if !node.path.exists() {
+                    node.path = "".into();
+                }
+            }
+        }
+
+        (pipeline, state)
+    }
+
+    fn set_pipeline(&mut self, pipeline: pipeline::Pipeline, state: NodeGraphEditState) {
         self.pipeline = pipeline;
         self.pipeline_edit_state = state;
 
@@ -109,7 +128,8 @@ impl eframe::App for IVOCTTestApp {
             .update(&mut self.data_views_state, &self.pipeline_executor);
 
         if let Some(json) = self.load_pipeline.take() {
-            self.load_pipeline(&json);
+            let (pipeline, state) = Self::load_pipeline(&json);
+            self.set_pipeline(pipeline, state);
         }
     }
 
