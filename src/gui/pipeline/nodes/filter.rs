@@ -14,6 +14,7 @@ impl fmt::Display for FilterType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             FilterType::Gaussian => write!(f, "Gaussian"),
+            FilterType::Median => write!(f, "Median"),
         }
     }
 }
@@ -25,6 +26,7 @@ impl EditNode for Node {
     fn name(&self) -> &str {
         match self.filter_type {
             FilterType::Gaussian => "Gaussian Filter",
+            FilterType::Median => "Median Filter",
         }
     }
 
@@ -65,6 +67,7 @@ impl EditNode for Node {
             .selected_text(format!("{}", self.filter_type))
             .show_ui(ui, |ui| {
                 ui.selectable_value(&mut self.filter_type, FilterType::Gaussian, "Gaussian");
+                ui.selectable_value(&mut self.filter_type, FilterType::Median, "Median");
             });
 
         match self.filter_type {
@@ -81,6 +84,16 @@ impl EditNode for Node {
                 ui.node_label("Kernel Size");
                 ui.add(
                     DragVector::new([&mut kernel_size.x, &mut kernel_size.y])
+                        .clamp_range(1..=100)
+                        .prefix(["Rows: ", "Columns: "]),
+                );
+            }
+            FilterType::Median => {
+                let size = self.median_settings.size.deref_mut();
+
+                ui.node_label("Kernel Size");
+                ui.add(
+                    DragVector::new([&mut size.x, &mut size.y])
                         .clamp_range(1..=100)
                         .prefix(["Rows: ", "Columns: "]),
                 );

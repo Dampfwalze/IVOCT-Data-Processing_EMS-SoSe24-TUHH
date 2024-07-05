@@ -39,9 +39,10 @@ impl EditNodeGraph for Pipeline {
             }
             "In Out/Output" => Box::new(output::Node::default()),
             "Process/Process Raw M Scan" => Box::new(process_raw_m_scan::Node::default()),
-            "Process/Filter/Gaussian Filter" => Box::new(filter::Node::gaussian()),
             "Process/Remove Detector Defect" => Box::new(remove_detector_defect::Node::new()),
             "Process/Segment B Scans" => Box::new(segment_b_scans::Node::default()),
+            "Filter/Gaussian Filter" => Box::new(filter::Node::gaussian()),
+            "Filter/Median Filter" => Box::new(filter::Node::median()),
             _ => panic!("Invalid path: {}", path),
         };
 
@@ -57,9 +58,10 @@ impl EditNodeGraph for Pipeline {
             "In Out/Binary Vector Input",
             "In Out/Output",
             "Process/Process Raw M Scan",
-            "Process/Filter/Gaussian Filter",
             "Process/Remove Detector Defect",
             "Process/Segment B Scans",
+            "Filter/Gaussian Filter",
+            "Filter/Median Filter",
         ]
     }
 }

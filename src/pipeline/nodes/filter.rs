@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use futures::FutureExt;
-use nalgebra::{DMatrix, Vector2};
+use nalgebra::{DMatrix, DMatrixView, Scalar, Vector2};
 use tokio::sync::watch;
 
 use crate::{
@@ -12,9 +12,11 @@ use crate::{
 
 use super::prelude::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FilterType {
+    #[default]
     Gaussian,
+    Median,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -23,11 +25,19 @@ pub struct GaussSettings {
     pub sigma: f32,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct MedianSettings {
+    pub size: Vector2<usize>,
+}
+
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub filter_type: FilterType,
 
+    #[serde(default)]
     pub gauss_settings: GaussSettings,
+    #[serde(default)]
+    pub median_settings: MedianSettings,
 
     #[serde(skip)]
     pub progress_rx: Option<watch::Receiver<Option<f32>>>,
@@ -40,6 +50,10 @@ impl Node {
         Self::new(FilterType::Gaussian)
     }
 
+    pub fn median() -> Self {
+        Self::new(FilterType::Median)
+    }
+
     pub fn new(filter_type: FilterType) -> Self {
         Self {
             filter_type,
@@ -48,16 +62,19 @@ impl Node {
     }
 }
 
-impl Default for Node {
+impl Default for GaussSettings {
     fn default() -> Self {
         Self {
-            filter_type: FilterType::Gaussian,
-            gauss_settings: GaussSettings {
-                kernel_size: Vector2::new(3, 3),
-                sigma: 1.0,
-            },
-            progress_rx: None,
-            input: Default::default(),
+            kernel_size: Vector2::new(3, 3),
+            sigma: 1.0,
+        }
+    }
+}
+
+impl Default for MedianSettings {
+    fn default() -> Self {
+        Self {
+            size: Vector2::new(3, 3),
         }
     }
 }
@@ -82,6 +99,7 @@ impl PipelineNode for Node {
         self.filter_type != other.filter_type
             || match self.filter_type {
                 FilterType::Gaussian => self.gauss_settings != other.gauss_settings,
+                FilterType::Median => self.median_settings != other.median_settings,
             }
     }
 
@@ -99,6 +117,7 @@ impl PipelineNode for Node {
         builder.task(Task {
             filter_type: self.filter_type,
             gauss_settings: self.gauss_settings,
+            median_settings: self.median_settings,
             progress_tx: progress_tx,
             m_scan_out,
             m_scan_in: TaskInput::default(),
@@ -110,6 +129,7 @@ struct Task {
     filter_type: FilterType,
 
     gauss_settings: GaussSettings,
+    median_settings: MedianSettings,
 
     progress_tx: watch::Sender<Option<f32>>,
 
@@ -132,6 +152,7 @@ impl NodeTask for Task {
     fn sync_node(&mut self, node: &Self::PipelineNode) {
         self.filter_type = node.filter_type;
         self.gauss_settings = node.gauss_settings;
+        self.median_settings = node.median_settings;
     }
 
     fn invalidate(&mut self, _cause: InvalidationCause) {
@@ -149,6 +170,7 @@ impl NodeTask for Task {
             let _ = self.progress_tx.send(Some(0.0));
 
             let gauss_settings = self.gauss_settings;
+            let median_settings = self.median_settings;
             let filter_type = self.filter_type;
 
             let (res, tx) = requests::StreamedResponse::new(100);
@@ -187,6 +209,26 @@ impl NodeTask for Task {
                             _ => unreachable!(),
                         }
                     }
+                    FilterType::Median => match m_scan.as_ref() {
+                        DataMatrix::U8(matrix) => {
+                            compute_median_par(matrix.as_view(), median_settings.size).into()
+                        }
+                        DataMatrix::U16(matrix) => {
+                            compute_median_par(matrix.as_view(), median_settings.size).into()
+                        }
+                        DataMatrix::U32(matrix) => {
+                            compute_median_par(matrix.as_view(), median_settings.size).into()
+                        }
+                        DataMatrix::U64(matrix) => {
+                            compute_median_par(matrix.as_view(), median_settings.size).into()
+                        }
+                        DataMatrix::F32(matrix) => {
+                            compute_median_par(matrix.as_view(), median_settings.size).into()
+                        }
+                        DataMatrix::F64(matrix) => {
+                            compute_median_par(matrix.as_view(), median_settings.size).into()
+                        }
+                    },
                 })
                 .await?;
 
@@ -233,4 +275,60 @@ fn gauss_kernel(sigma: f32, kernel_size: Vector2<usize>) -> DMatrix<f32> {
     kernel /= sum;
 
     kernel
+}
+
+fn compute_median_par<T>(matrix: DMatrixView<T>, size: Vector2<usize>) -> DMatrix<T>
+where
+    T: Scalar + Send + Sync + Copy + PartialOrd + 'static,
+{
+    use rayon::prelude::*;
+
+    assert!(size.x <= matrix.nrows());
+    assert!(size.y <= matrix.ncols());
+
+    let mut result = matrix.clone_owned();
+
+    let bucket_center = (size.x * size.y) / 2 + ((size.x * size.y) % 2);
+    let bucket_center = bucket_center.min(size.x * size.y - 1);
+
+    result
+        .par_column_iter_mut()
+        .enumerate()
+        .for_each(|(col, mut col_data)| {
+            let mut bucket = Vec::with_capacity(size.x * size.y);
+
+            for (row, value) in col_data.iter_mut().enumerate() {
+                let start_col = col as isize - (size.x / 2) as isize;
+                let start_row = row as isize - (size.y / 2) as isize;
+
+                bucket.clear();
+
+                for k_col in 0..size.x as isize {
+                    for k_row in 0..size.y as isize {
+                        let m_row = (start_row + k_row).abs() as usize;
+                        let m_col = (start_col + k_col).abs() as usize;
+
+                        // Mirror upper
+                        let m_row = if m_row >= matrix.nrows() {
+                            matrix.nrows() - (m_row - matrix.nrows()) - 2
+                        } else {
+                            m_row
+                        };
+                        let m_col = if m_col >= matrix.ncols() {
+                            matrix.ncols() - (m_col - matrix.ncols()) - 2
+                        } else {
+                            m_col
+                        };
+
+                        bucket.push(matrix[(m_row, m_col)]);
+                    }
+                }
+
+                bucket.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+
+                *value = bucket[bucket_center];
+            }
+        });
+
+    result
 }

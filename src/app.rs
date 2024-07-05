@@ -65,8 +65,10 @@ impl IVOCTTestApp {
     }
 
     fn load_pipeline(pipeline_json: &str) -> (pipeline::Pipeline, NodeGraphEditState) {
-        let (mut pipeline, state) = serde_json::from_str(pipeline_json)
-            .unwrap_or_else(|_| (pipeline::Pipeline::new(), NodeGraphEditState::new()));
+        let (mut pipeline, state) = serde_json::from_str(pipeline_json).unwrap_or_else(|e| {
+            eprintln!("Error loading pipeline: {}", e);
+            (pipeline::Pipeline::new(), NodeGraphEditState::new())
+        });
 
         // Clear all path that do not exist
         for (_, node) in &mut pipeline.nodes {
