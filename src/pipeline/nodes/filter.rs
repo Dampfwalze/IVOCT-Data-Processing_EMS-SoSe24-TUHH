@@ -1,6 +1,5 @@
 use std::{
     borrow::Cow,
-    fmt::Display,
     iter::Sum,
     ops::{AddAssign, Div, MulAssign},
     sync::Arc,
@@ -8,7 +7,7 @@ use std::{
 
 use futures::FutureExt;
 use nalgebra::{DMatrix, DMatrixView, Matrix3, Scalar, Vector2};
-use num_traits::Float;
+use num_traits::{Float, Zero};
 use simba::scalar::SupersetOf;
 use tokio::sync::watch;
 
@@ -28,15 +27,17 @@ pub enum FilterType {
     AlignBrightness,
     Wiener,
     Prewitt,
+    WidenStructures,
 }
 
 impl FilterType {
-    pub const VALUES: [FilterType; 5] = [
+    pub const VALUES: [FilterType; 6] = [
         FilterType::Gaussian,
         FilterType::Median,
         FilterType::AlignBrightness,
         FilterType::Wiener,
         FilterType::Prewitt,
+        FilterType::WidenStructures,
     ];
 }
 
@@ -61,6 +62,13 @@ pub struct PrewittSettings {
     pub threshold: f32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct WidenStructuresSettings {
+    pub width: usize,
+}
+
+// MARK: Node
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub filter_type: FilterType,
@@ -73,6 +81,8 @@ pub struct Node {
     pub wiener_settings: WienerSettings,
     #[serde(default)]
     pub prewitt_settings: PrewittSettings,
+    #[serde(default)]
+    pub widen_structures_settings: WidenStructuresSettings,
 
     #[serde(skip)]
     pub progress_rx: Option<watch::Receiver<Option<f32>>>,
@@ -99,6 +109,10 @@ impl Node {
 
     pub fn prewitt() -> Self {
         Self::new(FilterType::Prewitt)
+    }
+
+    pub fn widen_structures() -> Self {
+        Self::new(FilterType::WidenStructures)
     }
 
     pub fn new(filter_type: FilterType) -> Self {
@@ -140,6 +154,12 @@ impl Default for PrewittSettings {
     }
 }
 
+impl Default for WidenStructuresSettings {
+    fn default() -> Self {
+        Self { width: 3 }
+    }
+}
+
 deserialize_node!(Node, "filter");
 
 impl PipelineNode for Node {
@@ -164,6 +184,9 @@ impl PipelineNode for Node {
                 FilterType::AlignBrightness => false,
                 FilterType::Wiener => self.wiener_settings != other.wiener_settings,
                 FilterType::Prewitt => self.prewitt_settings != other.prewitt_settings,
+                FilterType::WidenStructures => {
+                    self.widen_structures_settings != other.widen_structures_settings
+                }
             }
     }
 
@@ -184,12 +207,15 @@ impl PipelineNode for Node {
             median_settings: self.median_settings,
             wiener_settings: self.wiener_settings,
             prewitt_settings: self.prewitt_settings,
+            widen_structures_settings: self.widen_structures_settings,
             progress_tx: progress_tx,
             m_scan_out,
             m_scan_in: TaskInput::default(),
         });
     }
 }
+
+// MARK: Task
 
 struct Task {
     filter_type: FilterType,
@@ -198,6 +224,7 @@ struct Task {
     median_settings: MedianSettings,
     wiener_settings: WienerSettings,
     prewitt_settings: PrewittSettings,
+    widen_structures_settings: WidenStructuresSettings,
 
     progress_tx: watch::Sender<Option<f32>>,
 
@@ -223,6 +250,7 @@ impl NodeTask for Task {
         self.median_settings = node.median_settings;
         self.wiener_settings = node.wiener_settings;
         self.prewitt_settings = node.prewitt_settings;
+        self.widen_structures_settings = node.widen_structures_settings;
     }
 
     fn invalidate(&mut self, _cause: InvalidationCause) {
@@ -243,6 +271,7 @@ impl NodeTask for Task {
             let median_settings = self.median_settings;
             let wiener_settings = self.wiener_settings;
             let prewitt_settings = self.prewitt_settings;
+            let widen_structures_settings = self.widen_structures_settings;
             let filter_type = self.filter_type;
 
             let (res, tx) = requests::StreamedResponse::new(100);
@@ -352,6 +381,32 @@ impl NodeTask for Task {
                             _ => unreachable!(),
                         }
                     }
+                    FilterType::WidenStructures => match m_scan.as_ref() {
+                        DataMatrix::U8(matrix) => {
+                            widen_structures_par(matrix.as_view(), widen_structures_settings.width)
+                                .into()
+                        }
+                        DataMatrix::U16(matrix) => {
+                            widen_structures_par(matrix.as_view(), widen_structures_settings.width)
+                                .into()
+                        }
+                        DataMatrix::U32(matrix) => {
+                            widen_structures_par(matrix.as_view(), widen_structures_settings.width)
+                                .into()
+                        }
+                        DataMatrix::U64(matrix) => {
+                            widen_structures_par(matrix.as_view(), widen_structures_settings.width)
+                                .into()
+                        }
+                        DataMatrix::F32(matrix) => {
+                            widen_structures_par(matrix.as_view(), widen_structures_settings.width)
+                                .into()
+                        }
+                        DataMatrix::F64(matrix) => {
+                            widen_structures_par(matrix.as_view(), widen_structures_settings.width)
+                                .into()
+                        }
+                    },
                 })
                 .await?;
 
@@ -369,6 +424,10 @@ impl NodeTask for Task {
         Ok(())
     }
 }
+
+// MARK: Implementations
+
+// MARK: Gaussian
 
 fn gauss_kernel(sigma: f32, kernel_size: Vector2<usize>) -> DMatrix<f32> {
     let mut kernel = DMatrix::zeros(kernel_size.x, kernel_size.y);
@@ -399,6 +458,8 @@ fn gauss_kernel(sigma: f32, kernel_size: Vector2<usize>) -> DMatrix<f32> {
 
     kernel
 }
+
+// MARK: Median
 
 fn compute_median_par<T>(matrix: DMatrixView<T>, size: Vector2<usize>) -> DMatrix<T>
 where
@@ -456,6 +517,8 @@ where
     result
 }
 
+// MARK: Align Brightness
+
 fn compute_align_brightness_par<T>(matrix: DMatrixView<T>) -> DMatrix<T>
 where
     T: Scalar
@@ -491,6 +554,8 @@ where
         });
     result
 }
+
+// MARK: Wiener
 
 fn compute_wiener_par<T>(matrix: DMatrixView<T>, settings: &WienerSettings) -> DMatrix<T>
 where
@@ -598,6 +663,8 @@ where
     result
 }
 
+// MARK: Prewitt
+
 fn compute_prewitt_par<T>(matrix: DMatrixView<T>, settings: &PrewittSettings) -> DMatrix<T>
 where
     T: Scalar
@@ -645,4 +712,38 @@ where
         });
 
     result_x
+}
+
+// MARK: Widen Structures
+
+fn widen_structures_par<T>(matrix: DMatrixView<T>, width: usize) -> DMatrix<T>
+where
+    T: Scalar + Zero + PartialOrd + Send + Sync + Copy + 'static,
+{
+    use rayon::prelude::*;
+
+    let mut result = matrix.clone_owned();
+
+    let last_col = matrix.ncols() - 1;
+
+    result
+        .par_column_iter_mut()
+        .enumerate()
+        .for_each(|(col, mut col_data)| {
+            for (row, value) in col_data.iter_mut().enumerate() {
+                let start_col = col.saturating_sub(width);
+                let end_col = col.saturating_add(width);
+
+                let end_col = end_col.min(last_col);
+
+                let max = (start_col..=end_col)
+                    .map(|c| matrix[(row, c)])
+                    .reduce(|a, b| if a > b { a } else { b })
+                    .unwrap_or(T::zero());
+
+                *value = max;
+            }
+        });
+
+    result
 }

@@ -46,6 +46,7 @@ impl EditNodeGraph for Pipeline {
             "Filter/Align Brightness" => Box::new(filter::Node::align_brightness()),
             "Filter/Wiener Filter" => Box::new(filter::Node::wiener()),
             "Filter/Prewitt Filter" => Box::new(filter::Node::prewitt()),
+            "Filter/Widen Structures" => Box::new(filter::Node::widen_structures()),
             _ => panic!("Invalid path: {}", path),
         };
 
@@ -68,6 +69,7 @@ impl EditNodeGraph for Pipeline {
             "Filter/Align Brightness",
             "Filter/Wiener Filter",
             "Filter/Prewitt Filter",
+            "Filter/Widen Structures",
         ]
     }
 }
