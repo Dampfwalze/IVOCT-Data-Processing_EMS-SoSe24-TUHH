@@ -29,7 +29,7 @@ mod prelude {
         requests, PipelineDataType,
     };
 
-    pub(crate) use super::PipelineNode;
+    pub(crate) use super::{deserialize_node, DynPipelineNode, PipelineNode};
 
     pub(crate) use graph::*;
 
@@ -39,9 +39,12 @@ mod prelude {
             NodeOutput, OutputId, OutputIdNone, OutputIdSingle, TypeId,
         };
     }
+
+    pub(crate) use serde::{Deserialize, Serialize};
 }
 
-pub trait PipelineNode: fmt::Debug
+pub trait PipelineNode: erased_serde::Serialize
+    + fmt::Debug
     + EditNode<InputId = <Self as PipelineNode>::InputId, OutputId = <Self as PipelineNode>::OutputId>
     + Send
     + Sync
@@ -50,6 +53,8 @@ pub trait PipelineNode: fmt::Debug
 {
     type InputId: From<InputId> + Into<InputId>;
     type OutputId: From<OutputId> + Into<OutputId>;
+
+    fn slug() -> &'static str;
 
     fn inputs(&self)
         -> impl Iterator<Item = (<Self as PipelineNode>::InputId, Option<NodeOutput>)>;
@@ -65,6 +70,7 @@ pub trait PipelineNode: fmt::Debug
     fn create_node_task(&mut self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>);
 }
 
+#[typetag::serde(tag = "type")]
 pub trait DynPipelineNode: DynEditNode + Send + Sync + 'static {
     fn as_edit_node_mut(&mut self) -> &mut dyn DynEditNode;
 
@@ -133,4 +139,29 @@ impl<T: PipelineNode> DynPipelineNode for T {
         self.create_node_task(&mut builder);
         builder.build()
     }
+
+    #[doc(hidden)]
+    fn typetag_name(&self) -> &'static str {
+        Self::slug()
+    }
+
+    #[doc(hidden)]
+    fn typetag_deserialize(&self) {}
 }
+
+macro_rules! deserialize_node {
+    ($ty:ty, $slug:expr) => {
+        typetag::__private::inventory::submit! {
+            <dyn DynPipelineNode>::typetag_register(
+                $slug,
+                (|deserializer| typetag::__private::Result::Ok(
+                    typetag::__private::Box::new(
+                        typetag::__private::erased_serde::deserialize::<$ty>(deserializer)?
+                    ),
+                )) as typetag::__private::DeserializeFn<<dyn DynPipelineNode as typetag::__private::Strictest>::Object>
+            )
+        }
+    };
+}
+
+pub(crate) use deserialize_node;

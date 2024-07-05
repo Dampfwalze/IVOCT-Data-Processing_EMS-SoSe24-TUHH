@@ -5,6 +5,7 @@ pub mod types;
 
 pub use execution::PipelineExecutor;
 use nodes::DynPipelineNode;
+use serde::{Deserialize, Serialize};
 
 use core::fmt;
 use std::{
@@ -14,7 +15,7 @@ use std::{
 
 use crate::node_graph::{impl_enum_from_into_id_types, NodeId, TypeId};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PipelineDataType {
     RawMScan,
     DataVector,
@@ -38,6 +39,7 @@ impl PipelineDataType {
     ];
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Pipeline {
     pub nodes: HashMap<NodeId, Box<dyn DynPipelineNode>>,
 }

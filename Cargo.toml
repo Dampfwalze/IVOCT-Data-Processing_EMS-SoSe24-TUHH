@@ -10,12 +10,18 @@ eframe = { version = "0.27.2", features = ["wgpu"] }
 egui = "0.27.2"
 egui_dock = "0.12.0"
 egui_plot = "0.27.2"
+erased-serde = "0.4.5"
 futures = "0.3.30"
-nalgebra = { version = "0.33.0", features = ["bytemuck", "rayon"] }
+nalgebra = { version = "0.33.0", features = [
+    "bytemuck",
+    "rayon",
+    "serde-serialize",
+] }
 native-dialog = "0.7.0"
 num-traits = "0.2.19"
 rayon = "1.10.0"
 rustfft = "6.2.0"
+serde = { version = "1.0.203", features = ["derive"] }
 simba = "0.9.0"
 thiserror = "1.0.61"
 tokio = { version = "1.38.0", features = [
@@ -27,5 +33,6 @@ tokio = { version = "1.38.0", features = [
     "time",
 ] }
 type-map = "0.5.0"
+typetag = "0.2.16"
 vec-collections = "0.4.3"
 wgpu = "~0.19.4"

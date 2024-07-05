@@ -12,7 +12,7 @@ use super::prelude::*;
 
 // MARK: Node
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub upper: usize,
     pub lower: usize,
@@ -30,9 +30,15 @@ impl Node {
     }
 }
 
+deserialize_node!(Node, "remove_detector_defect");
+
 impl PipelineNode for Node {
     type InputId = InputIdSingle;
     type OutputId = OutputIdSingle;
+
+    fn slug() -> &'static str {
+        "remove_detector_defect"
+    }
 
     fn inputs(
         &self,

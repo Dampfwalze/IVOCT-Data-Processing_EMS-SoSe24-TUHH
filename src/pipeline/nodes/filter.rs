@@ -12,23 +12,24 @@ use crate::{
 
 use super::prelude::*;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FilterType {
     Gaussian,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct GaussSettings {
     pub kernel_size: Vector2<usize>,
     pub sigma: f32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub filter_type: FilterType,
 
     pub gauss_settings: GaussSettings,
 
+    #[serde(skip)]
     pub progress_rx: Option<watch::Receiver<Option<f32>>>,
 
     pub input: NodeInput<()>,
@@ -61,9 +62,15 @@ impl Default for Node {
     }
 }
 
+deserialize_node!(Node, "filter");
+
 impl PipelineNode for Node {
     type InputId = InputIdSingle;
     type OutputId = OutputIdSingle;
+
+    fn slug() -> &'static str {
+        "filter"
+    }
 
     fn inputs(
         &self,

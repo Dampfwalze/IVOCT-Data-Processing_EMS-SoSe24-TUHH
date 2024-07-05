@@ -12,10 +12,11 @@ use frame::NodeFrameState;
 pub use node_graph_editor::*;
 
 use egui::{pos2, Align, Color32, InnerResponse, Label, Layout, Pos2, Response, Vec2, WidgetText};
+use serde::{Deserialize, Serialize};
 
 use crate::node_graph::*;
 
-#[derive(Debug, Default, Clone, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeGraphEditState {
     node_states: HashMap<NodeId, NodeFrameState>,
     node_order: Vec<NodeId>,

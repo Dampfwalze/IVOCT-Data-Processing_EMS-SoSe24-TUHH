@@ -10,7 +10,7 @@ use crate::pipeline::types::{DataMatrix, DataType, DataVector};
 
 use super::prelude::*;
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OutputId {
     #[default]
     RawMScan,
@@ -40,13 +40,14 @@ impl OutputId {
 
 // MARK: Node
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub path: PathBuf,
     pub input_type: OutputId,
     pub data_type: DataType,
     pub a_scan_length: usize,
 
+    #[serde(skip)]
     pub progress_rx: Option<watch::Receiver<Option<f32>>>,
 }
 
@@ -94,9 +95,15 @@ impl Default for Node {
     }
 }
 
+deserialize_node!(Node, "binary_input");
+
 impl PipelineNode for Node {
     type InputId = InputIdNone;
     type OutputId = OutputId;
+
+    fn slug() -> &'static str {
+        "binary_input"
+    }
 
     fn inputs(&self) -> impl Iterator<Item = (InputIdNone, Option<NodeOutput>)> {
         std::iter::empty()

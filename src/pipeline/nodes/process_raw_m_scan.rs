@@ -31,11 +31,12 @@ impl_enum_from_into_id_types!(InputId, [graph::InputId], {
 
 // MARK: Node
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub factor: f64,
     pub rescale_cutoff: usize,
 
+    #[serde(skip)]
     pub progress_rx: Option<watch::Receiver<Option<f32>>>,
 
     pub raw_scan: NodeInput<()>,
@@ -56,9 +57,15 @@ impl Default for Node {
     }
 }
 
+deserialize_node!(Node, "process_raw_m_scan");
+
 impl PipelineNode for Node {
     type InputId = InputId;
     type OutputId = OutputIdSingle;
+
+    fn slug() -> &'static str {
+        "process_raw_m_scan"
+    }
 
     fn inputs(&self) -> impl Iterator<Item = (InputId, Option<NodeOutput>)> {
         [
@@ -415,8 +422,8 @@ mod test {
         let data = vec![];
         let (lower, upper) = find_bounds_par(&data, 2);
 
-        assert_eq!(lower, vec![]);
-        assert_eq!(upper, vec![]);
+        assert_eq!(lower, vec![] as Vec<f32>);
+        assert_eq!(upper, vec![] as Vec<f32>);
     }
 
     #[test]

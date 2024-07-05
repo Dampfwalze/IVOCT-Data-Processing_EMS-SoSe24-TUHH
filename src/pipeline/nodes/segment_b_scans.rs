@@ -16,7 +16,7 @@ use crate::{
 
 use super::prelude::*;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
     pub neighbor_count: usize,
     pub neighborhood_width: usize,
@@ -27,9 +27,10 @@ pub struct Settings {
 
 // MARK: Node
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub settings: Settings,
+    #[serde(skip)]
     pub progress_rx: Option<watch::Receiver<Option<f32>>>,
     pub m_scan: NodeInput<()>,
 }
@@ -50,9 +51,15 @@ impl Default for Node {
     }
 }
 
+deserialize_node!(Node, "segment_b_scans");
+
 impl PipelineNode for Node {
     type InputId = InputIdSingle;
     type OutputId = OutputIdSingle;
+
+    fn slug() -> &'static str {
+        "segment_b_scans"
+    }
 
     fn inputs(
         &self,

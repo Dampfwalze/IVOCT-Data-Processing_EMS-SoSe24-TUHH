@@ -2,11 +2,12 @@ use std::mem;
 
 use nalgebra::{DMatrix, DMatrixView, DVector, Scalar};
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use simba::scalar::SubsetOf;
 
 // MARK: DataType
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DataType {
     U8,
     U16,

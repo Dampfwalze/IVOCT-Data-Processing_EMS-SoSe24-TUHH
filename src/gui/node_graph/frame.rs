@@ -2,10 +2,20 @@ use egui::{
     emath::TSTransform, epaint::TextShape, Color32, Id, InnerResponse, Margin, Pos2, Rect,
     Response, Rounding, Sense, Shape, Stroke, TextStyle, Ui, Vec2, WidgetText,
 };
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeFrameState {
+    #[serde(with = "Pos2Def")]
     pub position: Pos2,
+}
+
+/// A mirror for `egui::Pos2`, because it does not implement serde traits.
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "Pos2")]
+struct Pos2Def {
+    x: f32,
+    y: f32,
 }
 
 pub struct NodeFrame<'a> {

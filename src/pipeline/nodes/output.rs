@@ -19,15 +19,17 @@ pub enum Progress {
 
 // MARK: Node
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub path: PathBuf,
     pub input_type: PipelineDataType,
     pub scan_data_type: DataType,
+    #[serde(skip)]
     pub notify: Arc<Notify>,
 
     pub input: NodeInput<()>,
 
+    #[serde(skip)]
     pub progress_rx: Option<watch::Receiver<Progress>>,
 }
 
@@ -50,9 +52,15 @@ impl Node {
     }
 }
 
+deserialize_node!(Node, "output");
+
 impl PipelineNode for Node {
     type InputId = InputIdSingle;
     type OutputId = OutputIdNone;
+
+    fn slug() -> &'static str {
+        "output"
+    }
 
     fn changed(&self, other: &Self) -> bool {
         self.path != other.path

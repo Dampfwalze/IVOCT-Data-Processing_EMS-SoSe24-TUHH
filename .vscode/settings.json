@@ -18,6 +18,7 @@
         "rustfft",
         "rustfmt",
         "thiserror",
+        "typetag",
         "wgpu",
         "wgsl"
     ]
