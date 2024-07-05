@@ -44,6 +44,7 @@ impl EditNodeGraph for Pipeline {
             "Filter/Gaussian Filter" => Box::new(filter::Node::gaussian()),
             "Filter/Median Filter" => Box::new(filter::Node::median()),
             "Filter/Align Brightness" => Box::new(filter::Node::align_brightness()),
+            "Filter/Wiener Filter" => Box::new(filter::Node::wiener()),
             _ => panic!("Invalid path: {}", path),
         };
 
@@ -64,6 +65,7 @@ impl EditNodeGraph for Pipeline {
             "Filter/Gaussian Filter",
             "Filter/Median Filter",
             "Filter/Align Brightness",
+            "Filter/Wiener Filter",
         ]
     }
 }

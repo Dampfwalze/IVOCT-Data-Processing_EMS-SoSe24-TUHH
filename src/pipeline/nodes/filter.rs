@@ -1,7 +1,7 @@
 use std::{
     borrow::Cow,
     iter::Sum,
-    ops::{Div, MulAssign},
+    ops::{AddAssign, Div, MulAssign},
     sync::Arc,
 };
 
@@ -24,13 +24,15 @@ pub enum FilterType {
     Gaussian,
     Median,
     AlignBrightness,
+    Wiener,
 }
 
 impl FilterType {
-    pub const VALUES: [FilterType; 3] = [
+    pub const VALUES: [FilterType; 4] = [
         FilterType::Gaussian,
         FilterType::Median,
         FilterType::AlignBrightness,
+        FilterType::Wiener,
     ];
 }
 
@@ -45,6 +47,11 @@ pub struct MedianSettings {
     pub size: Vector2<usize>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct WienerSettings {
+    pub neighborhood_size: Vector2<usize>,
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub filter_type: FilterType,
@@ -53,6 +60,8 @@ pub struct Node {
     pub gauss_settings: GaussSettings,
     #[serde(default)]
     pub median_settings: MedianSettings,
+    #[serde(default)]
+    pub wiener_settings: WienerSettings,
 
     #[serde(skip)]
     pub progress_rx: Option<watch::Receiver<Option<f32>>>,
@@ -71,6 +80,10 @@ impl Node {
 
     pub fn align_brightness() -> Self {
         Self::new(FilterType::AlignBrightness)
+    }
+
+    pub fn wiener() -> Self {
+        Self::new(FilterType::Wiener)
     }
 
     pub fn new(filter_type: FilterType) -> Self {
@@ -98,6 +111,14 @@ impl Default for MedianSettings {
     }
 }
 
+impl Default for WienerSettings {
+    fn default() -> Self {
+        Self {
+            neighborhood_size: Vector2::new(3, 3),
+        }
+    }
+}
+
 deserialize_node!(Node, "filter");
 
 impl PipelineNode for Node {
@@ -120,6 +141,7 @@ impl PipelineNode for Node {
                 FilterType::Gaussian => self.gauss_settings != other.gauss_settings,
                 FilterType::Median => self.median_settings != other.median_settings,
                 FilterType::AlignBrightness => false,
+                FilterType::Wiener => self.wiener_settings != other.wiener_settings,
             }
     }
 
@@ -138,6 +160,7 @@ impl PipelineNode for Node {
             filter_type: self.filter_type,
             gauss_settings: self.gauss_settings,
             median_settings: self.median_settings,
+            wiener_settings: self.wiener_settings,
             progress_tx: progress_tx,
             m_scan_out,
             m_scan_in: TaskInput::default(),
@@ -150,6 +173,7 @@ struct Task {
 
     gauss_settings: GaussSettings,
     median_settings: MedianSettings,
+    wiener_settings: WienerSettings,
 
     progress_tx: watch::Sender<Option<f32>>,
 
@@ -173,6 +197,7 @@ impl NodeTask for Task {
         self.filter_type = node.filter_type;
         self.gauss_settings = node.gauss_settings;
         self.median_settings = node.median_settings;
+        self.wiener_settings = node.wiener_settings;
     }
 
     fn invalidate(&mut self, _cause: InvalidationCause) {
@@ -191,6 +216,7 @@ impl NodeTask for Task {
 
             let gauss_settings = self.gauss_settings;
             let median_settings = self.median_settings;
+            let wiener_settings = self.wiener_settings;
             let filter_type = self.filter_type;
 
             let (res, tx) = requests::StreamedResponse::new(100);
@@ -262,6 +288,23 @@ impl NodeTask for Task {
                             }
                             DataMatrix::F64(matrix) => {
                                 compute_align_brightness_par(matrix.as_view()).into()
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                    FilterType::Wiener => {
+                        let m_scan: Cow<DataMatrix> = if m_scan.data_type().is_integer() {
+                            Cow::Owned(m_scan.cast_rescale_par(types::DataType::F32))
+                        } else {
+                            Cow::Borrowed(m_scan.as_ref())
+                        };
+
+                        match m_scan.as_ref() {
+                            DataMatrix::F32(matrix) => {
+                                compute_wiener_par(matrix.as_view(), &wiener_settings).into()
+                            }
+                            DataMatrix::F64(matrix) => {
+                                compute_wiener_par(matrix.as_view(), &wiener_settings).into()
                             }
                             _ => unreachable!(),
                         }
@@ -403,5 +446,111 @@ where
                 *value *= factor;
             });
         });
+    result
+}
+
+fn compute_wiener_par<T>(matrix: DMatrixView<T>, settings: &WienerSettings) -> DMatrix<T>
+where
+    T: Scalar
+        + Float
+        + Send
+        + Sync
+        + Copy
+        + Sum
+        + Div<Output = T>
+        + AddAssign
+        + MulAssign
+        + num_traits::NumCast
+        + PartialOrd
+        + 'static,
+{
+    use rayon::prelude::*;
+
+    let size = settings.neighborhood_size;
+
+    let mut result = matrix.clone_owned();
+
+    let inverse_size = T::one() / num_traits::cast(size.x * size.y).unwrap();
+
+    let mut temp = DMatrix::<(T, T)>::from_fn(matrix.nrows(), matrix.ncols(), |_, _| {
+        (T::zero(), T::zero())
+    });
+
+    temp.par_column_iter_mut()
+        .enumerate()
+        .for_each(|(col, mut col_data)| {
+            for (row, value) in col_data.iter_mut().enumerate() {
+                let start_col = col as isize - (size.x / 2) as isize;
+                let start_row = row as isize - (size.y / 2) as isize;
+
+                let get_row_col = |k_row: isize, k_col: isize| {
+                    let m_row = (start_row + k_row).abs() as usize;
+                    let m_col = (start_col + k_col).abs() as usize;
+
+                    // Mirror upper
+                    let m_row = if m_row >= matrix.nrows() {
+                        matrix.nrows() - (m_row - matrix.nrows()) - 2
+                    } else {
+                        m_row
+                    };
+                    let m_col = if m_col >= matrix.ncols() {
+                        matrix.ncols() - (m_col - matrix.ncols()) - 2
+                    } else {
+                        m_col
+                    };
+
+                    (m_row, m_col)
+                };
+
+                let mut sum = T::zero();
+
+                for k_col in 0..size.x as isize {
+                    for k_row in 0..size.y as isize {
+                        let (m_row, m_col) = get_row_col(k_row, k_col);
+
+                        sum += matrix[(m_row, m_col)];
+                    }
+                }
+
+                let mean = sum * inverse_size;
+                let mean_sq = mean * mean;
+
+                let mut sum = T::zero();
+
+                for k_col in 0..size.x as isize {
+                    for k_row in 0..size.y as isize {
+                        let (m_row, m_col) = get_row_col(k_row, k_col);
+
+                        let val = matrix[(m_row, m_col)];
+                        sum += val * val - mean_sq;
+                    }
+                }
+
+                let local_variance = sum * inverse_size;
+
+                *value = (mean, local_variance);
+            }
+        });
+
+    // Use mean of all local variances as noise variance
+    let noise_variance = temp
+        .par_column_iter()
+        .map(|col| col.iter().map(|(_, lv)| *lv).sum::<T>() / num_traits::cast(col.len()).unwrap())
+        .sum::<T>()
+        / num_traits::cast(temp.ncols()).unwrap();
+
+    result
+        .par_column_iter_mut()
+        .zip(temp.par_column_iter())
+        .for_each(|(mut col, temp_col)| {
+            col.iter_mut()
+                .zip(temp_col.iter())
+                .for_each(|(value, (mean, local_variance))| {
+                    let filter = *mean
+                        + ((*local_variance - noise_variance) / *local_variance) * (*value - *mean);
+                    *value *= filter;
+                });
+        });
+
     result
 }

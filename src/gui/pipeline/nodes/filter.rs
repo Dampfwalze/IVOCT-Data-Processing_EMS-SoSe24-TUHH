@@ -16,6 +16,7 @@ impl fmt::Display for FilterType {
             FilterType::Gaussian => write!(f, "Gaussian"),
             FilterType::Median => write!(f, "Median"),
             FilterType::AlignBrightness => write!(f, "Align Brightness"),
+            FilterType::Wiener => write!(f, "Wiener"),
         }
     }
 }
@@ -29,6 +30,7 @@ impl EditNode for Node {
             FilterType::Gaussian => "Gaussian Filter",
             FilterType::Median => "Median Filter",
             FilterType::AlignBrightness => "Align Brightness",
+            FilterType::Wiener => "Wiener Filter",
         }
     }
 
@@ -106,6 +108,16 @@ impl EditNode for Node {
                 );
             }
             FilterType::AlignBrightness => {}
+            FilterType::Wiener => {
+                let size = self.wiener_settings.neighborhood_size.deref_mut();
+
+                ui.node_label("Neighborhood Size");
+                ui.add(
+                    DragVector::new([&mut size.x, &mut size.y])
+                        .clamp_range(1..=100)
+                        .prefix(["Rows: ", "Columns: "]),
+                );
+            }
         }
 
         if let Some(progress) = self.progress_rx.as_ref().and_then(|rx| rx.borrow().clone()) {
