@@ -1,4 +1,4 @@
-use std::mem;
+use std::{borrow::Cow, mem};
 
 use crate::{
     cache::Cache,
@@ -30,13 +30,25 @@ pub struct IVOCTTestApp {
     cache: Cache,
 
     interacted_node: Option<NodeId>,
+
+    load_pipeline: Option<Cow<'static, str>>,
 }
 
 impl IVOCTTestApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> IVOCTTestApp {
+        let pipeline_json = cc.storage.unwrap().get_string("user_pipeline");
+
+        let pipeline_json: Cow<_> = match pipeline_json {
+            Some(json) => json.into(),
+            None => pipeline::presets::PHANTOM_1_1_3.into(),
+        };
+
+        let (pipeline, state) = serde_json::from_str(&pipeline_json)
+            .unwrap_or_else(|_| (pipeline::Pipeline::new(), NodeGraphEditState::new()));
+
         IVOCTTestApp {
-            pipeline: pipeline::Pipeline::new(),
-            pipeline_edit_state: NodeGraphEditState::new(),
+            pipeline,
+            pipeline_edit_state: state,
             pipeline_executor: pipeline::PipelineExecutor::new(),
             data_views_state: DataViewsState::new(),
             data_views_manager: DataViewsManagerBuilder::new(
@@ -49,9 +61,25 @@ impl IVOCTTestApp {
             dock_state: DockState::new(),
             cache: Cache::new(),
             interacted_node: None,
+            load_pipeline: None,
         }
     }
+
+    fn load_pipeline(&mut self, pipeline_json: &str) {
+        let (pipeline, state) = serde_json::from_str(pipeline_json)
+            .unwrap_or_else(|_| (pipeline::Pipeline::new(), NodeGraphEditState::new()));
+
+        self.pipeline = pipeline;
+        self.pipeline_edit_state = state;
+
+        self.pipeline_executor.clear();
+        self.data_views_state.clear();
+
+        self.dock_state.close_all_views();
+    }
 }
+
+// MARK: impl App
 
 impl eframe::App for IVOCTTestApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
@@ -79,8 +107,22 @@ impl eframe::App for IVOCTTestApp {
 
         self.data_views_executor
             .update(&mut self.data_views_state, &self.pipeline_executor);
+
+        if let Some(json) = self.load_pipeline.take() {
+            self.load_pipeline(&json);
+        }
+    }
+
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        println!("Saving");
+
+        let pipeline = serde_json::to_string(&(&self.pipeline, &self.pipeline_edit_state)).unwrap();
+
+        storage.set_string("user_pipeline", pipeline)
     }
 }
+
+// MARK: impl TabViewer
 
 impl egui_dock::TabViewer for IVOCTTestApp {
     type Tab = TabType;
@@ -127,6 +169,8 @@ impl egui_dock::TabViewer for IVOCTTestApp {
     fn ui(&mut self, ui: &mut egui::Ui, tab: &mut Self::Tab) {
         match tab {
             TabType::Pipeline => {
+                self.pipeline_menu_bar(ui);
+
                 let _response =
                     NodeGraphEditor::new(&mut self.pipeline, &mut self.pipeline_edit_state)
                         .show(ui);
@@ -146,5 +190,66 @@ impl egui_dock::TabViewer for IVOCTTestApp {
                 }
             }
         }
+    }
+}
+
+// MARK: Pipeline Menu Bar
+
+impl IVOCTTestApp {
+    fn pipeline_menu_bar(&mut self, ui: &mut egui::Ui) {
+        egui::menu::bar(ui, |ui| {
+            ui.menu_button("File", |ui| {
+                if ui.button("Open").clicked() {
+                    let file = native_dialog::FileDialog::new()
+                        .add_filter("JSON", &["json"])
+                        .set_title("Open Pipeline")
+                        .show_open_single_file();
+
+                    if let Ok(Some(file)) = file {
+                        match std::fs::read_to_string(file) {
+                            Ok(json) => self.load_pipeline = Some(json.into()),
+                            Err(e) => eprintln!("Error loading pipeline: {}", e),
+                        }
+                    }
+
+                    ui.close_menu();
+                }
+
+                ui.menu_button("Presets", |ui| {
+                    if ui.button("Phantom 1.1.3").clicked() {
+                        self.load_pipeline = Some(pipeline::presets::PHANTOM_1_1_3.into());
+                        ui.close_menu();
+                    }
+                    if ui.button("Phantom 1.2.4").clicked() {
+                        self.load_pipeline = Some(pipeline::presets::PHANTOM_1_2_4.into());
+                        ui.close_menu();
+                    }
+                    if ui.button("Clinic").clicked() {
+                        self.load_pipeline = Some(pipeline::presets::CLINIC.into());
+                        ui.close_menu();
+                    }
+                });
+
+                if ui.button("Save").clicked() {
+                    let file = native_dialog::FileDialog::new()
+                        .add_filter("JSON", &["json"])
+                        .set_title("Save Pipeline")
+                        .show_save_single_file();
+
+                    if let Ok(Some(file)) = file {
+                        let serialized = serde_json::to_string_pretty(&(
+                            &self.pipeline,
+                            &self.pipeline_edit_state,
+                        ))
+                        .unwrap();
+                        if let Err(e) = std::fs::write(file, serialized) {
+                            eprintln!("Error saving pipeline: {}", e);
+                        }
+                    }
+
+                    ui.close_menu();
+                }
+            });
+        });
     }
 }

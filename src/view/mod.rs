@@ -53,6 +53,10 @@ impl DataViewsState {
     pub fn get_mut(&mut self, view_id: ViewId) -> Option<&mut dyn DynDataView> {
         self.views.get_mut(&view_id).map(|v| v.as_mut())
     }
+
+    pub fn clear(&mut self) {
+        self.views.clear();
+    }
 }
 
 impl fmt::Debug for DataViewsState {

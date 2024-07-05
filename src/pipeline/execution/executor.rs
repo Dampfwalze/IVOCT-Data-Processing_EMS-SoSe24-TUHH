@@ -62,6 +62,10 @@ impl PipelineExecutor {
             .get(&node_id)
             .and_then(|r| r.read().unwrap().get_output(output_id))
     }
+
+    pub fn clear(&mut self) {
+        self.runners.clear();
+    }
 }
 
 // MARK: NodeTaskRunner

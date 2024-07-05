@@ -93,6 +93,10 @@ impl DockState {
             }
         }
     }
+
+    pub fn close_all_views(&mut self) {
+        self.retain_tabs(|tab| !matches!(tab, TabType::DataView(_)));
+    }
 }
 
 impl Deref for DockState {

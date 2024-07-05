@@ -1,0 +1,97 @@
+[
+    {
+        "nodes": {
+            "1": {
+                "type": "binary_input",
+                "path": "C:\\Users\\pauls\\Desktop\\test_IVOCT\\mscan_clinic.dat",
+                "input_type": "MScan",
+                "data_type": "U16",
+                "a_scan_length": 512
+            },
+            "5": {
+                "type": "remove_detector_defect",
+                "upper": 225,
+                "lower": 219,
+                "m_scan": {
+                    "value": null,
+                    "connection": {
+                        "node_id": 1,
+                        "output_id": 1,
+                        "type_id": 2
+                    }
+                }
+            },
+            "6": {
+                "type": "filter",
+                "filter_type": "Gaussian",
+                "gauss_settings": {
+                    "kernel_size": [
+                        3,
+                        10
+                    ],
+                    "sigma": 5.0
+                },
+                "input": {
+                    "value": null,
+                    "connection": {
+                        "node_id": 5,
+                        "output_id": 0,
+                        "type_id": 2
+                    }
+                }
+            },
+            "7": {
+                "type": "segment_b_scans",
+                "settings": {
+                    "neighbor_count": 3,
+                    "neighborhood_width": 50,
+                    "search_range_start": 7000,
+                    "search_range_end": 8000,
+                    "offset": 0
+                },
+                "m_scan": {
+                    "value": null,
+                    "connection": {
+                        "node_id": 6,
+                        "output_id": 0,
+                        "type_id": 2
+                    }
+                }
+            }
+        }
+    },
+    {
+        "node_states": {
+            "1": {
+                "position": {
+                    "x": 5.0,
+                    "y": 5.0
+                }
+            },
+            "5": {
+                "position": {
+                    "x": 255.0,
+                    "y": 5.0
+                }
+            },
+            "6": {
+                "position": {
+                    "x": 505.0,
+                    "y": 5.0
+                }
+            },
+            "7": {
+                "position": {
+                    "x": 755.0,
+                    "y": 5.0
+                }
+            }
+        },
+        "node_order": [
+            1,
+            5,
+            6,
+            7
+        ]
+    }
+]
