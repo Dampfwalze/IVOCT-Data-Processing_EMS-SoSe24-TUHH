@@ -43,6 +43,7 @@ impl EditNodeGraph for Pipeline {
             "Process/Segment B Scans" => Box::new(segment_b_scans::Node::default()),
             "Filter/Gaussian Filter" => Box::new(filter::Node::gaussian()),
             "Filter/Median Filter" => Box::new(filter::Node::median()),
+            "Filter/Align Brightness" => Box::new(filter::Node::align_brightness()),
             _ => panic!("Invalid path: {}", path),
         };
 
@@ -62,6 +63,7 @@ impl EditNodeGraph for Pipeline {
             "Process/Segment B Scans",
             "Filter/Gaussian Filter",
             "Filter/Median Filter",
+            "Filter/Align Brightness",
         ]
     }
 }

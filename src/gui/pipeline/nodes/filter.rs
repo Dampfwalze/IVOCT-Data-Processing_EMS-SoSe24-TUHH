@@ -15,6 +15,7 @@ impl fmt::Display for FilterType {
         match self {
             FilterType::Gaussian => write!(f, "Gaussian"),
             FilterType::Median => write!(f, "Median"),
+            FilterType::AlignBrightness => write!(f, "Align Brightness"),
         }
     }
 }
@@ -27,6 +28,7 @@ impl EditNode for Node {
         match self.filter_type {
             FilterType::Gaussian => "Gaussian Filter",
             FilterType::Median => "Median Filter",
+            FilterType::AlignBrightness => "Align Brightness",
         }
     }
 
@@ -66,8 +68,13 @@ impl EditNode for Node {
         NodeComboBox::from_id_source(ui.id().with("filter_type"))
             .selected_text(format!("{}", self.filter_type))
             .show_ui(ui, |ui| {
-                ui.selectable_value(&mut self.filter_type, FilterType::Gaussian, "Gaussian");
-                ui.selectable_value(&mut self.filter_type, FilterType::Median, "Median");
+                for filter_type in FilterType::VALUES {
+                    ui.selectable_value(
+                        &mut self.filter_type,
+                        filter_type,
+                        format!("{}", filter_type),
+                    );
+                }
             });
 
         match self.filter_type {
@@ -98,6 +105,7 @@ impl EditNode for Node {
                         .prefix(["Rows: ", "Columns: "]),
                 );
             }
+            FilterType::AlignBrightness => {}
         }
 
         if let Some(progress) = self.progress_rx.as_ref().and_then(|rx| rx.borrow().clone()) {

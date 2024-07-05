@@ -1,7 +1,13 @@
-use std::sync::Arc;
+use std::{
+    borrow::Cow,
+    iter::Sum,
+    ops::{Div, MulAssign},
+    sync::Arc,
+};
 
 use futures::FutureExt;
 use nalgebra::{DMatrix, DMatrixView, Scalar, Vector2};
+use num_traits::Float;
 use tokio::sync::watch;
 
 use crate::{
@@ -17,6 +23,15 @@ pub enum FilterType {
     #[default]
     Gaussian,
     Median,
+    AlignBrightness,
+}
+
+impl FilterType {
+    pub const VALUES: [FilterType; 3] = [
+        FilterType::Gaussian,
+        FilterType::Median,
+        FilterType::AlignBrightness,
+    ];
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -52,6 +67,10 @@ impl Node {
 
     pub fn median() -> Self {
         Self::new(FilterType::Median)
+    }
+
+    pub fn align_brightness() -> Self {
+        Self::new(FilterType::AlignBrightness)
     }
 
     pub fn new(filter_type: FilterType) -> Self {
@@ -100,6 +119,7 @@ impl PipelineNode for Node {
             || match self.filter_type {
                 FilterType::Gaussian => self.gauss_settings != other.gauss_settings,
                 FilterType::Median => self.median_settings != other.median_settings,
+                FilterType::AlignBrightness => false,
             }
     }
 
@@ -229,6 +249,23 @@ impl NodeTask for Task {
                             compute_median_par(matrix.as_view(), median_settings.size).into()
                         }
                     },
+                    FilterType::AlignBrightness => {
+                        let m_scan: Cow<DataMatrix> = if m_scan.data_type().is_integer() {
+                            Cow::Owned(m_scan.cast_rescale_par(types::DataType::F32))
+                        } else {
+                            Cow::Borrowed(m_scan.as_ref())
+                        };
+
+                        match m_scan.as_ref() {
+                            DataMatrix::F32(matrix) => {
+                                compute_align_brightness_par(matrix.as_view()).into()
+                            }
+                            DataMatrix::F64(matrix) => {
+                                compute_align_brightness_par(matrix.as_view()).into()
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
                 })
                 .await?;
 
@@ -330,5 +367,41 @@ where
             }
         });
 
+    result
+}
+
+fn compute_align_brightness_par<T>(matrix: DMatrixView<T>) -> DMatrix<T>
+where
+    T: Scalar
+        + Float
+        + Send
+        + Sync
+        + Copy
+        + Sum
+        + Div<Output = T>
+        + MulAssign
+        + num_traits::NumCast
+        + 'static,
+{
+    use rayon::prelude::*;
+
+    let mut result = matrix.clone_owned();
+
+    let means = matrix
+        .par_column_iter()
+        .map(|col| col.iter().copied().sum::<T>() / num_traits::cast(col.len()).unwrap())
+        .collect::<Vec<_>>();
+
+    let mean = means.iter().copied().sum::<T>() / num_traits::cast(means.len()).unwrap();
+
+    result
+        .par_column_iter_mut()
+        .zip(means.into_par_iter())
+        .for_each(|(mut col, col_mean)| {
+            let factor = mean / col_mean;
+            col.iter_mut().for_each(|value| {
+                *value *= factor;
+            });
+        });
     result
 }
