@@ -5,7 +5,7 @@ use egui::{Color32, DragValue, ProgressBar};
 
 use crate::{
     gui::widgets::DragVector,
-    pipeline::nodes::filter::{FilterType, Node},
+    pipeline::nodes::filter::{AreaConnectionType, FilterType, Node},
 };
 
 use super::prelude::*;
@@ -19,6 +19,16 @@ impl fmt::Display for FilterType {
             FilterType::Wiener => write!(f, "Wiener"),
             FilterType::Prewitt => write!(f, "Prewitt"),
             FilterType::WidenStructures => write!(f, "Widen Structures"),
+            FilterType::BWAreaOpen => write!(f, "Binary Area Opening"),
+        }
+    }
+}
+
+impl fmt::Display for AreaConnectionType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            AreaConnectionType::Star4 => write!(f, "Star 4"),
+            AreaConnectionType::Circle8 => write!(f, "Circle 8"),
         }
     }
 }
@@ -35,6 +45,7 @@ impl EditNode for Node {
             FilterType::Wiener => "Wiener Filter",
             FilterType::Prewitt => "Prewitt Filter",
             FilterType::WidenStructures => "Widen Structures",
+            FilterType::BWAreaOpen => "Binary Area Opening",
         }
     }
 
@@ -136,6 +147,25 @@ impl EditNode for Node {
                         .clamp_range(0..=50)
                         .prefix("Size: "),
                 );
+            }
+            FilterType::BWAreaOpen => {
+                ui.add(
+                    DragValue::new(&mut self.b_w_area_open_settings.area)
+                        .clamp_range(0..=1000)
+                        .prefix("Area Size: "),
+                );
+
+                NodeComboBox::from_id_source(ui.id().with("conn_type"))
+                    .selected_text(format!("{}", self.b_w_area_open_settings.connection_type))
+                    .show_ui(ui, |ui| {
+                        for conn_type in AreaConnectionType::VALUES {
+                            ui.selectable_value(
+                                &mut self.b_w_area_open_settings.connection_type,
+                                conn_type,
+                                format!("{}", conn_type),
+                            );
+                        }
+                    });
             }
         }
 

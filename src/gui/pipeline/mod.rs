@@ -47,6 +47,7 @@ impl EditNodeGraph for Pipeline {
             "Filter/Wiener Filter" => Box::new(filter::Node::wiener()),
             "Filter/Prewitt Filter" => Box::new(filter::Node::prewitt()),
             "Filter/Widen Structures" => Box::new(filter::Node::widen_structures()),
+            "Filter/Binary Area Opening" => Box::new(filter::Node::b_ware_open()),
             _ => panic!("Invalid path: {}", path),
         };
 
@@ -70,6 +71,7 @@ impl EditNodeGraph for Pipeline {
             "Filter/Wiener Filter",
             "Filter/Prewitt Filter",
             "Filter/Widen Structures",
+            "Filter/Binary Area Opening",
         ]
     }
 }

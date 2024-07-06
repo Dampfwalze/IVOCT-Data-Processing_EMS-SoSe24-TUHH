@@ -28,17 +28,30 @@ pub enum FilterType {
     Wiener,
     Prewitt,
     WidenStructures,
+    BWAreaOpen,
 }
 
 impl FilterType {
-    pub const VALUES: [FilterType; 6] = [
+    pub const VALUES: [FilterType; 7] = [
         FilterType::Gaussian,
         FilterType::Median,
         FilterType::AlignBrightness,
         FilterType::Wiener,
         FilterType::Prewitt,
         FilterType::WidenStructures,
+        FilterType::BWAreaOpen,
     ];
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum AreaConnectionType {
+    Star4,
+    Circle8,
+}
+
+impl AreaConnectionType {
+    pub const VALUES: [AreaConnectionType; 2] =
+        [AreaConnectionType::Star4, AreaConnectionType::Circle8];
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -67,6 +80,12 @@ pub struct WidenStructuresSettings {
     pub width: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct BWareOpenSettings {
+    pub area: usize,
+    pub connection_type: AreaConnectionType,
+}
+
 // MARK: Node
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -83,6 +102,8 @@ pub struct Node {
     pub prewitt_settings: PrewittSettings,
     #[serde(default)]
     pub widen_structures_settings: WidenStructuresSettings,
+    #[serde(default)]
+    pub b_w_area_open_settings: BWareOpenSettings,
 
     #[serde(skip)]
     pub progress_rx: Option<watch::Receiver<Option<f32>>>,
@@ -113,6 +134,10 @@ impl Node {
 
     pub fn widen_structures() -> Self {
         Self::new(FilterType::WidenStructures)
+    }
+
+    pub fn b_ware_open() -> Self {
+        Self::new(FilterType::BWAreaOpen)
     }
 
     pub fn new(filter_type: FilterType) -> Self {
@@ -160,6 +185,15 @@ impl Default for WidenStructuresSettings {
     }
 }
 
+impl Default for BWareOpenSettings {
+    fn default() -> Self {
+        Self {
+            area: 10,
+            connection_type: AreaConnectionType::Star4,
+        }
+    }
+}
+
 deserialize_node!(Node, "filter");
 
 impl PipelineNode for Node {
@@ -187,6 +221,9 @@ impl PipelineNode for Node {
                 FilterType::WidenStructures => {
                     self.widen_structures_settings != other.widen_structures_settings
                 }
+                FilterType::BWAreaOpen => {
+                    self.b_w_area_open_settings != other.b_w_area_open_settings
+                }
             }
     }
 
@@ -208,6 +245,7 @@ impl PipelineNode for Node {
             wiener_settings: self.wiener_settings,
             prewitt_settings: self.prewitt_settings,
             widen_structures_settings: self.widen_structures_settings,
+            b_ware_open_settings: self.b_w_area_open_settings,
             progress_tx: progress_tx,
             m_scan_out,
             m_scan_in: TaskInput::default(),
@@ -225,6 +263,7 @@ struct Task {
     wiener_settings: WienerSettings,
     prewitt_settings: PrewittSettings,
     widen_structures_settings: WidenStructuresSettings,
+    b_ware_open_settings: BWareOpenSettings,
 
     progress_tx: watch::Sender<Option<f32>>,
 
@@ -251,6 +290,7 @@ impl NodeTask for Task {
         self.wiener_settings = node.wiener_settings;
         self.prewitt_settings = node.prewitt_settings;
         self.widen_structures_settings = node.widen_structures_settings;
+        self.b_ware_open_settings = node.b_w_area_open_settings;
     }
 
     fn invalidate(&mut self, _cause: InvalidationCause) {
@@ -272,6 +312,7 @@ impl NodeTask for Task {
             let wiener_settings = self.wiener_settings;
             let prewitt_settings = self.prewitt_settings;
             let widen_structures_settings = self.widen_structures_settings;
+            let b_ware_open_settings = self.b_ware_open_settings;
             let filter_type = self.filter_type;
 
             let (res, tx) = requests::StreamedResponse::new(100);
@@ -405,6 +446,26 @@ impl NodeTask for Task {
                         DataMatrix::F64(matrix) => {
                             widen_structures_par(matrix.as_view(), widen_structures_settings.width)
                                 .into()
+                        }
+                    },
+                    FilterType::BWAreaOpen => match m_scan.as_ref() {
+                        DataMatrix::U8(matrix) => {
+                            b_warea_open_par(matrix.as_view(), &b_ware_open_settings).into()
+                        }
+                        DataMatrix::U16(matrix) => {
+                            b_warea_open_par(matrix.as_view(), &b_ware_open_settings).into()
+                        }
+                        DataMatrix::U32(matrix) => {
+                            b_warea_open_par(matrix.as_view(), &b_ware_open_settings).into()
+                        }
+                        DataMatrix::U64(matrix) => {
+                            b_warea_open_par(matrix.as_view(), &b_ware_open_settings).into()
+                        }
+                        DataMatrix::F32(matrix) => {
+                            b_warea_open_par(matrix.as_view(), &b_ware_open_settings).into()
+                        }
+                        DataMatrix::F64(matrix) => {
+                            b_warea_open_par(matrix.as_view(), &b_ware_open_settings).into()
                         }
                     },
                 })
@@ -742,6 +803,156 @@ where
                     .unwrap_or(T::zero());
 
                 *value = max;
+            }
+        });
+
+    result
+}
+
+// MARK: BWareOpen
+
+fn b_warea_open_par<T>(matrix: DMatrixView<T>, settings: &BWareOpenSettings) -> DMatrix<T>
+where
+    T: Scalar + Zero + PartialOrd + Send + Sync + Copy + 'static,
+{
+    use rayon::prelude::*;
+
+    const HAVE_SEEN: usize = usize::MAX;
+
+    let mut result = matrix.clone_owned();
+
+    let max_area = settings.area;
+
+    // rayon::scope(|s| {
+    let thread_count = rayon::current_num_threads();
+    let block_size = matrix.ncols() / thread_count + 1;
+
+    fn for_neighbors_star4(
+        row: usize,
+        col: usize,
+        max_row: usize,
+        max_col: usize,
+        f: &mut dyn FnMut(usize, usize),
+    ) {
+        if row > 0 {
+            f(row - 1, col);
+        }
+        if col > 0 {
+            f(row, col - 1);
+        }
+        if row < max_row {
+            f(row + 1, col);
+        }
+        if col < max_col {
+            f(row, col + 1);
+        }
+    }
+
+    fn for_neighbors_circle8(
+        row: usize,
+        col: usize,
+        max_row: usize,
+        max_col: usize,
+        f: &mut dyn FnMut(usize, usize),
+    ) {
+        for i in row.saturating_sub(1)..=(row + 1).min(max_row) {
+            for j in col.saturating_sub(1)..=(col + 1).min(max_col) {
+                if i == row && j == col {
+                    continue;
+                }
+                f(i, j);
+            }
+        }
+    }
+
+    let for_neighbors = match settings.connection_type {
+        AreaConnectionType::Star4 => for_neighbors_star4,
+        AreaConnectionType::Circle8 => for_neighbors_circle8,
+    };
+
+    let area_counters = (0..thread_count)
+        .into_par_iter()
+        .map(|i| {
+            let start_idx = i * block_size;
+            let end_idx = ((i + 1) * block_size).min(matrix.ncols());
+
+            let mut area_counter = DMatrix::<usize>::zeros(matrix.nrows(), end_idx - start_idx);
+            let max_row = area_counter.nrows() - 1;
+            let max_col = area_counter.ncols() - 1;
+
+            let mut queue = Vec::with_capacity(max_area);
+
+            for col in 0..area_counter.ncols() {
+                for row in 0..area_counter.nrows() {
+                    if area_counter[(row, col)] > 0 || matrix[(row, col + start_idx)] <= T::zero() {
+                        continue;
+                    }
+
+                    let mut area_count = 0;
+                    let mut queue_cur = 0;
+                    queue.clear();
+                    queue.push((row, col));
+
+                    while let Some((row, col)) = queue.get(queue_cur).copied() {
+                        queue_cur += 1;
+
+                        if matrix[(row, col + start_idx)] <= T::zero() {
+                            continue;
+                        }
+
+                        let counter = &mut area_counter[(row, col)];
+
+                        if *counter == HAVE_SEEN {
+                            continue;
+                        }
+
+                        if *counter > 0 {
+                            area_count = *counter;
+                        }
+
+                        area_count += 1;
+
+                        if area_count >= max_area {
+                            break;
+                        }
+
+                        *counter = HAVE_SEEN;
+
+                        for_neighbors(row, col, max_row, max_col, &mut |n_row, n_col| {
+                            if area_counter[(n_row, n_col)] == 0
+                                && matrix[(n_row, n_col + start_idx)] > T::zero()
+                            {
+                                queue.push((n_row, n_col));
+                            }
+                        });
+                    }
+
+                    for (row, col) in queue.iter().take(queue_cur).copied() {
+                        area_counter[(row, col)] = area_count;
+                    }
+                }
+            }
+
+            area_counter
+        })
+        .collect::<Vec<_>>();
+
+    // TODO: Merge area counters
+
+    result
+        .par_column_iter_mut()
+        .enumerate()
+        .for_each(|(col, mut col_data)| {
+            let counter_idx = col / block_size;
+            let counter_col = col % block_size;
+            for (row, value) in col_data.iter_mut().enumerate() {
+                let local_area = area_counters[counter_idx][(row, counter_col)];
+
+                *value = if local_area >= max_area {
+                    matrix[(row, col)]
+                } else {
+                    T::zero()
+                };
             }
         });
 
