@@ -41,7 +41,7 @@ impl EditNodeGraph for Pipeline {
             "Process/Process Raw M Scan" => Box::new(process_raw_m_scan::Node::default()),
             "Process/Remove Detector Defect" => Box::new(remove_detector_defect::Node::new()),
             "Process/Segment B Scans" => Box::new(segment_b_scans::Node::default()),
-            "Process/Follow Catheter" => Box::new(follow_catheter::Node::new()),
+            "Process/Follow Catheter" => Box::new(follow_catheter::Node::default()),
             "Filter/Gaussian Filter" => Box::new(filter::Node::gaussian()),
             "Filter/Median Filter" => Box::new(filter::Node::median()),
             "Filter/Align Brightness" => Box::new(filter::Node::align_brightness()),

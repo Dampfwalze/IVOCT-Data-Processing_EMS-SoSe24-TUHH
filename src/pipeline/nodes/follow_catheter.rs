@@ -18,31 +18,40 @@ pub struct Settings {
     pub window_extend: usize,
 }
 
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            start_height: 100,
+            window_extend: 7,
+        }
+    }
+}
+
+pub enum InputId {
+    MScan,
+    BScanSegmentation,
+}
+
+impl_enum_from_into_id_types!(InputId, [graph::InputId], {
+    0 => MScan,
+    1 => BScanSegmentation,
+});
+
 // MARK: Node
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Node {
+    #[serde(default)]
     pub settings: Settings,
 
     pub m_scan: NodeInput<()>,
-}
-
-impl Node {
-    pub fn new() -> Self {
-        Self {
-            settings: Settings {
-                start_height: 100,
-                window_extend: 7,
-            },
-            m_scan: Default::default(),
-        }
-    }
+    pub b_scan_segmentation: NodeInput<()>,
 }
 
 deserialize_node!(Node, "follow_catheter");
 
 impl PipelineNode for Node {
-    type InputId = InputIdSingle;
+    type InputId = InputId;
     type OutputId = OutputIdSingle;
 
     fn slug() -> &'static str {
@@ -52,7 +61,14 @@ impl PipelineNode for Node {
     fn inputs(
         &self,
     ) -> impl Iterator<Item = (<Self as PipelineNode>::InputId, Option<NodeOutput>)> {
-        std::iter::once((InputIdSingle, self.m_scan.connection()))
+        [
+            (InputId::MScan, self.m_scan.connection()),
+            (
+                InputId::BScanSegmentation,
+                self.b_scan_segmentation.connection(),
+            ),
+        ]
+        .into_iter()
     }
 
     fn changed(&self, other: &Self) -> bool {
@@ -70,6 +86,7 @@ impl PipelineNode for Node {
             settings: self.settings,
             segmentation_out,
             m_scan_in: TaskInput::default(),
+            b_scan_segmentation_in: TaskInput::default(),
         });
     }
 }
@@ -81,18 +98,25 @@ struct Task {
 
     segmentation_out: TaskOutput<requests::MScanSegmentation>,
     m_scan_in: TaskInput<requests::MScan>,
+    b_scan_segmentation_in: TaskInput<requests::BScanSegmentation>,
 }
 
 impl NodeTask for Task {
-    type InputId = InputIdSingle;
+    type InputId = InputId;
     type PipelineNode = Node;
 
-    fn connect(&mut self, _input_id: Self::InputId, input: &mut ConnectionHandle) {
-        self.m_scan_in.connect(input);
+    fn connect(&mut self, input_id: Self::InputId, input: &mut ConnectionHandle) {
+        match input_id {
+            InputId::MScan => self.m_scan_in.connect(input),
+            InputId::BScanSegmentation => self.b_scan_segmentation_in.connect(input),
+        };
     }
 
-    fn disconnect(&mut self, _input_id: Self::InputId) {
-        self.m_scan_in.disconnect();
+    fn disconnect(&mut self, input_id: Self::InputId) {
+        match input_id {
+            InputId::MScan => self.m_scan_in.disconnect(),
+            InputId::BScanSegmentation => self.b_scan_segmentation_in.disconnect(),
+        };
     }
 
     fn sync_node(&mut self, node: &Self::PipelineNode) {

@@ -1,12 +1,12 @@
 use egui::DragValue;
 
-use crate::pipeline::nodes::follow_catheter::Node;
+use crate::pipeline::nodes::follow_catheter::{InputId, Node};
 
 use super::prelude::*;
 
 impl EditNode for Node {
     type OutputId = OutputIdSingle;
-    type InputId = InputIdSingle;
+    type InputId = InputId;
 
     fn name(&self) -> &str {
         "Follow Catheter"
@@ -16,14 +16,23 @@ impl EditNode for Node {
         colors::PROCESS
     }
 
-    fn connect(&mut self, _input: Self::InputId, connection: NodeOutput) {
-        if connection.type_id == PipelineDataType::MScan.into() {
-            self.m_scan.connect(connection);
+    fn connect(&mut self, input: Self::InputId, connection: NodeOutput) {
+        match (input, PipelineDataType::from(connection.type_id)) {
+            (InputId::MScan, PipelineDataType::MScan) => {
+                self.m_scan.connect(connection);
+            }
+            (InputId::BScanSegmentation, PipelineDataType::BScanSegmentation) => {
+                self.b_scan_segmentation.connect(connection);
+            }
+            _ => {}
         }
     }
 
-    fn disconnect(&mut self, _input: Self::InputId) {
-        self.m_scan.disconnect();
+    fn disconnect(&mut self, input: Self::InputId) {
+        match input {
+            InputId::MScan => self.m_scan.disconnect(),
+            InputId::BScanSegmentation => self.b_scan_segmentation.disconnect(),
+        }
     }
 
     fn ui(&mut self, ui: &mut NodeUi) {
@@ -37,11 +46,20 @@ impl EditNode for Node {
         );
 
         ui.input(
-            InputIdSingle,
+            InputId::MScan,
             self.m_scan.connection(),
             PipelineDataType::MScan.color(),
             |ui| {
                 ui.node_label("M-Scan");
+            },
+        );
+
+        ui.input(
+            InputId::BScanSegmentation,
+            self.b_scan_segmentation.connection(),
+            PipelineDataType::BScanSegmentation.color(),
+            |ui| {
+                ui.node_label("B-Scan Segmentation");
             },
         );
 
