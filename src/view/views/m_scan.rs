@@ -3,8 +3,9 @@ use std::{collections::HashSet, num::NonZeroU32, sync::Arc};
 use crate::{cache::Cached, gui::widgets::PanZoomRect, queue_channel::error::RecvError};
 
 use super::prelude::*;
-use egui::{pos2, vec2, Color32, ComboBox, Layout, Rect, Response, Sense, Stroke, Vec2};
+use egui::{pos2, vec2, Color32, ComboBox, Layout, Rect, Response, Sense, Shape, Stroke, Vec2};
 use futures::future;
+use nalgebra::DVector;
 use tokio::sync::{watch, RwLock};
 use wgpu::{util::DeviceExt, PushConstantRange};
 
@@ -16,11 +17,13 @@ pub const MAX_TEXTURES: usize = 100;
 pub enum InputId {
     MScan,
     BScanSegmentation,
+    MScanSegmentation,
 }
 
 impl_enum_from_into_id_types!(InputId, [graph::InputId], {
     0 => MScan,
     1 => BScanSegmentation,
+    2 => MScanSegmentation,
 });
 
 // MARK: View
@@ -28,11 +31,14 @@ impl_enum_from_into_id_types!(InputId, [graph::InputId], {
 pub struct View {
     m_scan: NodeOutput,
     b_scan_segmentation: Option<NodeOutput>,
+    m_scan_segmentation: Option<NodeOutput>,
 
     textures_state: Cached<Option<TexturesState>>,
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
     bind_group_layout: Arc<wgpu::BindGroupLayout>,
+
+    m_scan_segmentation_rx: Option<watch::Receiver<Vec<usize>>>,
 
     b_scan_segmentation_rx: Option<watch::Receiver<Vec<usize>>>,
     b_scan_segmentation_buffer: Option<(wgpu::Buffer, Arc<wgpu::BindGroup>)>,
@@ -52,10 +58,12 @@ impl View {
         Self {
             m_scan: node_output,
             b_scan_segmentation: None,
+            m_scan_segmentation: None,
             textures_state: cache.get((node_output.node_id, node_output.output_id)),
             device: render_state.device.clone(),
             queue: render_state.queue.clone(),
             bind_group_layout: resources.bind_group_layout.clone(),
+            m_scan_segmentation_rx: None,
             b_scan_segmentation_rx: None,
             b_scan_segmentation_buffer: None,
             b_scan_segmentation_bind_group_layout: resources
@@ -71,11 +79,13 @@ impl Clone for View {
         Self {
             m_scan: self.m_scan.clone(),
             b_scan_segmentation: self.b_scan_segmentation.clone(),
+            m_scan_segmentation: self.m_scan_segmentation.clone(),
             textures_state: self.textures_state.clone(),
             device: self.device.clone(),
             queue: self.queue.clone(),
             bind_group_layout: self.bind_group_layout.clone(),
-            b_scan_segmentation_rx: self.b_scan_segmentation_rx.clone(),
+            m_scan_segmentation_rx: None,
+            b_scan_segmentation_rx: None,
             b_scan_segmentation_buffer: None,
             b_scan_segmentation_bind_group_layout: self
                 .b_scan_segmentation_bind_group_layout
@@ -114,6 +124,13 @@ impl DataView for View {
                     ..Self::new(m_scan, cache, render_state)
                 })
             }
+            PipelineDataType::MScanSegmentation => {
+                let m_scan = find_m_scan_input(pipeline, node_output.node_id)?;
+                Some(Self {
+                    m_scan_segmentation: Some(*node_output),
+                    ..Self::new(m_scan, cache, render_state)
+                })
+            }
             _ => None,
         }
     }
@@ -122,6 +139,7 @@ impl DataView for View {
         [
             (InputId::MScan, Some(self.m_scan)),
             (InputId::BScanSegmentation, self.b_scan_segmentation),
+            (InputId::MScanSegmentation, self.m_scan_segmentation),
         ]
         .into_iter()
     }
@@ -142,6 +160,10 @@ impl DataView for View {
                 self.b_scan_segmentation = Some(node_output);
                 true
             }
+            PipelineDataType::MScanSegmentation => {
+                self.m_scan_segmentation = Some(node_output);
+                true
+            }
             _ => false,
         }
     }
@@ -153,22 +175,30 @@ impl DataView for View {
                 self.b_scan_segmentation = None;
                 Existence::Keep
             }
+            InputId::MScanSegmentation => {
+                self.m_scan_segmentation = None;
+                Existence::Keep
+            }
         }
     }
 
     fn create_view_task(&mut self) -> impl DataViewTask<InputId = Self::InputId, DataView = Self> {
         let (b_scan_tx, b_scan_rx) = watch::channel(Vec::new());
+        let (m_scan_tx, m_scan_rx) = watch::channel(Vec::new());
 
         self.b_scan_segmentation_rx = Some(b_scan_rx);
+        self.m_scan_segmentation_rx = Some(m_scan_rx);
 
         Task {
             m_scan_in: TaskInput::default(),
             b_scan_segmentation_in: TaskInput::default(),
+            m_scan_segmentation_in: TaskInput::default(),
             textures_state: self.textures_state.clone(),
             device: self.device.clone(),
             queue: self.queue.clone(),
             bind_group_layout: self.bind_group_layout.clone(),
             b_scan_segmentation_tx: b_scan_tx,
+            m_scan_segmentation_tx: m_scan_tx,
         }
     }
 
@@ -211,6 +241,17 @@ impl DataView for View {
                 let b_scan_segmentation =
                     self.b_scan_segmentation_rx.as_ref().map(|rx| rx.borrow());
 
+                let m_scan_segmentation =
+                    self.m_scan_segmentation_rx.as_ref().map(|rx| rx.borrow());
+
+                let m_scan_segmentation = m_scan_segmentation
+                    .as_deref()
+                    .map(|v| v.as_slice())
+                    .and_then(|v| match v.len() {
+                        0..=2 => None,
+                        _ => Some(v),
+                    });
+
                 if let Some(b_scan_segmentation) = b_scan_segmentation {
                     if b_scan_segmentation.len() > 1 {
                         cartesian_m_scan_ui(
@@ -249,6 +290,7 @@ impl DataView for View {
                         textures_state,
                         texture_bind_group.clone(),
                         b_scan_segmentation.as_deref().map(|rx| rx.as_slice()),
+                        m_scan_segmentation,
                     )
                 }
             })
@@ -287,6 +329,7 @@ fn polar_m_scan_ui(
     textures_state: &TexturesState,
     texture_bind_group: Arc<wgpu::BindGroup>,
     b_scan_segmentation: Option<&[usize]>,
+    m_scan_segmentation: Option<&[usize]>,
 ) -> egui::Response {
     PanZoomRect::new()
         .zoom_y(false)
@@ -320,6 +363,40 @@ fn polar_m_scan_ui(
                         Stroke::new(1.0, egui::Color32::BLUE),
                     );
                 }
+            }
+
+            if let Some(m_scan_segmentation) = m_scan_segmentation {
+                let rect = ui.max_rect();
+                let points = (rect.left() as usize..=rect.right() as usize)
+                    .filter_map(|global_x| {
+                        let viewport_x = (global_x as f32 - viewport.min.x) / viewport.width();
+
+                        if viewport_x < 0.0 {
+                            return None;
+                        }
+
+                        let scan_idx =
+                            (viewport_x * (textures_state.a_scan_count - 1) as f32) as usize;
+
+                        if scan_idx >= m_scan_segmentation.len() {
+                            return None;
+                        }
+
+                        let scan_idx = scan_idx.min(textures_state.a_scan_count - 1);
+
+                        let y = m_scan_segmentation[scan_idx] as f32
+                            / textures_state.a_scan_samples as f32;
+                        let y = y * viewport.height() + viewport.min.y;
+
+                        let x = (scan_idx as f32) / (textures_state.a_scan_count as f32);
+                        let x = x * viewport.width() + viewport.min.x;
+
+                        Some(pos2(x as f32, y))
+                    })
+                    .collect::<Vec<_>>();
+
+                ui.painter()
+                    .add(Shape::line(points, Stroke::new(1.0, Color32::RED)));
             }
         })
         .response
@@ -681,6 +758,7 @@ impl eframe::egui_wgpu::CallbackTrait for SideViewPaintCallback {
 struct Task {
     m_scan_in: TaskInput<requests::MScan>,
     b_scan_segmentation_in: TaskInput<requests::BScanSegmentation>,
+    m_scan_segmentation_in: TaskInput<requests::MScanSegmentation>,
 
     textures_state: Cached<Option<TexturesState>>,
     device: Arc<wgpu::Device>,
@@ -688,6 +766,7 @@ struct Task {
     bind_group_layout: Arc<wgpu::BindGroupLayout>,
 
     b_scan_segmentation_tx: watch::Sender<Vec<usize>>,
+    m_scan_segmentation_tx: watch::Sender<Vec<usize>>,
 }
 
 impl DataViewTask for Task {
@@ -703,6 +782,7 @@ impl DataViewTask for Task {
         match input_id {
             InputId::MScan => self.m_scan_in.connect(input),
             InputId::BScanSegmentation => self.b_scan_segmentation_in.connect(input),
+            InputId::MScanSegmentation => self.m_scan_segmentation_in.connect(input),
         };
     }
 
@@ -710,6 +790,7 @@ impl DataViewTask for Task {
         match input_id {
             InputId::MScan => self.m_scan_in.disconnect(),
             InputId::BScanSegmentation => self.b_scan_segmentation_in.disconnect(),
+            InputId::MScanSegmentation => self.m_scan_segmentation_in.disconnect(),
         };
     }
 
@@ -722,12 +803,18 @@ impl DataViewTask for Task {
                 d.clear();
             });
         }
+        fn invalidate_m_scan_segmentation(slf: &mut Task) {
+            let _ = slf.m_scan_segmentation_tx.send_modify(|d| {
+                d.clear();
+            });
+        }
 
         match cause {
             InvalidationCause::Synced => invalidate_m_scan(self),
             InvalidationCause::InputInvalidated(input_id) => match input_id.into() {
                 InputId::MScan => invalidate_m_scan(self),
                 InputId::BScanSegmentation => invalidate_b_scan_segmentation(self),
+                InputId::MScanSegmentation => invalidate_m_scan_segmentation(self),
             },
             _ => {}
         }
@@ -735,6 +822,7 @@ impl DataViewTask for Task {
 
     async fn run(&mut self) -> anyhow::Result<()> {
         tokio::select! {
+            biased;
             Some(res) = async {
                 let has_data = self.textures_state.read().is_some();
                 match has_data {
@@ -756,6 +844,19 @@ impl DataViewTask for Task {
                 }
             } => {
                 self.get_b_scan_segmentation(res).await?;
+            }
+            Some(res) = async {
+                let is_empty = self.m_scan_segmentation_tx.borrow().is_empty();
+                match is_empty {
+                    false => None,
+                    _ => {
+                        self.m_scan_segmentation_in
+                            .request(requests::MScanSegmentation)
+                            .await
+                    }
+                }
+            } => {
+                self.get_m_scan_segmentation(res).await?;
             }
             _ = future::pending() => {}
         }
@@ -792,6 +893,33 @@ impl Task {
         Ok(())
     }
 
+    async fn get_m_scan_segmentation(
+        &mut self,
+        res: requests::StreamedResponse<Arc<DVector<u32>>>,
+    ) -> anyhow::Result<()> {
+        let Some(mut rx) = res.subscribe() else {
+            return Ok(());
+        };
+
+        self.m_scan_segmentation_tx.send_modify(|d| {
+            d.clear();
+        });
+
+        loop {
+            let data = match rx.recv().await {
+                Ok(data) => data,
+                Err(RecvError::Closed) => break,
+                _ => return Ok(()),
+            };
+
+            self.m_scan_segmentation_tx.send_modify(|d| {
+                d.extend(data.iter().map(|d| *d as usize));
+            });
+        }
+
+        Ok(())
+    }
+
     async fn get_m_scan(&mut self, res: requests::MScanResponse) -> anyhow::Result<()> {
         {
             let mut state = self.textures_state.write();
@@ -802,6 +930,7 @@ impl Task {
                     bind_group: None,
                     working: true,
                     a_scan_count: res.a_scan_count,
+                    a_scan_samples: res.a_scan_samples,
                 });
             }
         }
@@ -906,6 +1035,7 @@ struct TexturesState {
     bind_group: Option<Arc<wgpu::BindGroup>>,
     working: bool,
     a_scan_count: usize,
+    a_scan_samples: usize,
 }
 
 // MARK: SharedResources

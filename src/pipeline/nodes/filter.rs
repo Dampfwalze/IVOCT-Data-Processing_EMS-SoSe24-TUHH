@@ -823,7 +823,6 @@ where
 
     let max_area = settings.area;
 
-    // rayon::scope(|s| {
     let thread_count = rayon::current_num_threads();
     let block_size = matrix.ncols() / thread_count + 1;
 

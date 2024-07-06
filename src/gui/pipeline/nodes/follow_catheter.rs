@@ -1,0 +1,52 @@
+use egui::DragValue;
+
+use crate::pipeline::nodes::follow_catheter::Node;
+
+use super::prelude::*;
+
+impl EditNode for Node {
+    type OutputId = OutputIdSingle;
+    type InputId = InputIdSingle;
+
+    fn name(&self) -> &str {
+        "Follow Catheter"
+    }
+
+    fn color(&self) -> egui::Color32 {
+        colors::PROCESS
+    }
+
+    fn connect(&mut self, _input: Self::InputId, connection: NodeOutput) {
+        if connection.type_id == PipelineDataType::MScan.into() {
+            self.m_scan.connect(connection);
+        }
+    }
+
+    fn disconnect(&mut self, _input: Self::InputId) {
+        self.m_scan.disconnect();
+    }
+
+    fn ui(&mut self, ui: &mut NodeUi) {
+        ui.output(
+            OutputIdSingle,
+            PipelineDataType::MScanSegmentation,
+            PipelineDataType::MScanSegmentation.color(),
+            |ui| {
+                ui.node_label("Segmentation");
+            },
+        );
+
+        ui.input(
+            InputIdSingle,
+            self.m_scan.connection(),
+            PipelineDataType::MScan.color(),
+            |ui| {
+                ui.node_label("M-Scan");
+            },
+        );
+
+        ui.add(DragValue::new(&mut self.settings.start_height).prefix("Start Height: "));
+
+        ui.add(DragValue::new(&mut self.settings.window_extend).prefix("Radius: "));
+    }
+}

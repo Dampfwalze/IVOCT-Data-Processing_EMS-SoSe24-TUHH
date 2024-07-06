@@ -1,5 +1,6 @@
 pub mod binary_input;
 pub mod filter;
+pub mod follow_catheter;
 pub mod output;
 pub mod process_raw_m_scan;
 pub mod remove_detector_defect;
@@ -59,6 +60,7 @@ impl PipelineDataType {
             PipelineDataType::DataVector => Color32::from_rgb(0, 128, 255),
             PipelineDataType::MScan => Color32::from_rgb(121, 70, 29),
             PipelineDataType::BScanSegmentation => Color32::from_rgb(0, 128, 255),
+            PipelineDataType::MScanSegmentation => Color32::from_rgb(128, 0, 128),
         }
     }
 }
@@ -70,6 +72,7 @@ impl fmt::Display for PipelineDataType {
             PipelineDataType::DataVector => write!(f, "Data vector"),
             PipelineDataType::MScan => write!(f, "M scan"),
             PipelineDataType::BScanSegmentation => write!(f, "B-scan segmentation"),
+            PipelineDataType::MScanSegmentation => write!(f, "M-scan segmentation"),
         }
     }
 }

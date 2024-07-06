@@ -91,6 +91,9 @@ impl PipelineNode for Node {
                 PipelineDataType::BScanSegmentation => {
                     TaskInputType::BScanSegmentation(TaskInput::default())
                 }
+                PipelineDataType::MScanSegmentation => {
+                    TaskInputType::MScanSegmentation(TaskInput::default())
+                }
             },
         });
     }
@@ -104,6 +107,7 @@ enum TaskInputType {
     DataVector(TaskInput<requests::VectorData>),
     MScan(TaskInput<requests::MScan>),
     BScanSegmentation(TaskInput<requests::BScanSegmentation>),
+    MScanSegmentation(TaskInput<requests::MScanSegmentation>),
 }
 
 impl TaskInputType {
@@ -113,6 +117,7 @@ impl TaskInputType {
             TaskInputType::DataVector(input) => input.disconnect(),
             TaskInputType::MScan(input) => input.disconnect(),
             TaskInputType::BScanSegmentation(input) => input.disconnect(),
+            TaskInputType::MScanSegmentation(input) => input.disconnect(),
         }
     }
 }
@@ -165,6 +170,13 @@ impl NodeTask for Task {
                     let mut task_input = TaskInput::<requests::BScanSegmentation>::default();
                     if task_input.connect(input) {
                         resulting = Some(TaskInputType::BScanSegmentation(task_input));
+                        break;
+                    }
+                }
+                PipelineDataType::MScanSegmentation => {
+                    let mut task_input = TaskInput::<requests::MScanSegmentation>::default();
+                    if task_input.connect(input) {
+                        resulting = Some(TaskInputType::MScanSegmentation(task_input));
                         break;
                     }
                 }
@@ -287,6 +299,31 @@ impl NodeTask for Task {
                     };
 
                     file.write_all(bytemuck::cast_slice(&[value as u32]))
+                        .await?;
+                }
+                let _ = self.progress_tx.send(Progress::Idle);
+            }
+            TaskInputType::MScanSegmentation(input) => {
+                let mut file = fs::File::create(&self.path).await?;
+
+                let Some(res) = input.request(requests::MScanSegmentation).await else {
+                    return Ok(());
+                };
+
+                let Some(mut rx) = res.subscribe() else {
+                    return Err(anyhow!("Failed to subscribe to MScanSegmentation"));
+                };
+
+                let _ = self.progress_tx.send(Progress::Working(None));
+
+                loop {
+                    let value = match rx.recv().await {
+                        Err(RecvError::Closed) => break,
+                        Err(e) => Err(e)?,
+                        Ok(scan) => scan,
+                    };
+
+                    file.write_all(bytemuck::cast_slice(value.as_slice()))
                         .await?;
                 }
                 let _ = self.progress_tx.send(Progress::Idle);
