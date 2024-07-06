@@ -13,7 +13,7 @@ impl EditNode for Node {
     }
 
     fn color(&self) -> egui::Color32 {
-        colors::INPUT
+        colors::PROCESS
     }
 
     fn connect(&mut self, _input: Self::InputId, connection: NodeOutput) {

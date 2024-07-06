@@ -46,7 +46,10 @@ mod colors {
     use egui::Color32;
 
     pub const INPUT: Color32 = Color32::from_rgb(121, 70, 29);
-    pub const OUTPUT: Color32 = Color32::from_rgb(0, 128, 255);
+    pub const OUTPUT: Color32 = Color32::from_rgb(60, 60, 131);
+    pub const PROCESS: Color32 = Color32::from_rgb(43, 101, 43);
+    pub const FILTER: Color32 = Color32::from_rgb(131, 49, 74);
+    // pub const TRANSFORM: Color32 = Color32::from_rgb(36, 98, 131);
 }
 
 impl PipelineDataType {

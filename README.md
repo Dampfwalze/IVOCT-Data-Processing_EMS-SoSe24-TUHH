@@ -25,7 +25,7 @@ may need to restart your terminal to have the changes take effect.
 ### 3. Compile and run
 
 ```
-…\ems_sose24_ivoct_testing> cargo run
+…\ems_sose24_ivoct_testing> cargo run --release
 ```
 
 > Note: Compiling the first time may take some time.

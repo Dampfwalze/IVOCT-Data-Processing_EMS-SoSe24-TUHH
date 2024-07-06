@@ -50,7 +50,7 @@ impl EditNode for Node {
     }
 
     fn color(&self) -> Color32 {
-        colors::INPUT
+        colors::FILTER
     }
 
     fn connect(&mut self, _input: Self::InputId, connection: NodeOutput) {
