@@ -278,14 +278,7 @@ impl NodeTask for Task {
 
 fn find_start_height<T>(m_scan: DMatrixView<T>, start_height: u32) -> u32
 where
-    T: nalgebra::Scalar
-        + Clone
-        + Copy
-        + PartialOrd
-        + Zero
-        + Mul<Output = T>
-        + num_traits::NumCast
-        + Display,
+    T: nalgebra::Scalar + Clone + Copy + PartialOrd + Zero + Mul<Output = T> + num_traits::NumCast,
 {
     let start_height = (start_height as usize).min(m_scan.nrows() - 1);
 

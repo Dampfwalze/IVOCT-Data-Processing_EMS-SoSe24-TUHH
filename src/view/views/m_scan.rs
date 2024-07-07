@@ -386,8 +386,12 @@ fn polar_m_scan_ui(
 
                         let scan_idx = scan_idx.min(textures_state.a_scan_count - 1);
 
-                        let y = m_scan_segmentation[scan_idx] as f32
-                            / textures_state.a_scan_samples as f32;
+                        let seg = m_scan_segmentation[scan_idx];
+                        if seg >= textures_state.a_scan_samples {
+                            return None;
+                        }
+
+                        let y = seg as f32 / textures_state.a_scan_samples as f32;
                         let y = y * viewport.height() + viewport.min.y;
 
                         let x = (scan_idx as f32) / (textures_state.a_scan_count as f32);
@@ -445,7 +449,10 @@ fn cartesian_m_scan_ui(
         let points = (b_scan_start..b_scan_end)
             .step_by(step_size)
             .filter_map(|i| {
-                m_scan_segmentation.get(i).map(|&seg| {
+                m_scan_segmentation.get(i).and_then(|&seg| {
+                    if seg >= textures_state.a_scan_samples {
+                        return None;
+                    }
                     let alpha = (i - b_scan_start) as f32 / b_scan_size as f32;
                     let alpha = alpha * std::f32::consts::TAU;
 
@@ -453,7 +460,7 @@ fn cartesian_m_scan_ui(
                         * Vec2::angled(alpha)
                         * radius;
 
-                    rect.center() + vec2(-vec.y, -vec.x)
+                    Some(rect.center() + vec2(-vec.y, -vec.x))
                 })
             })
             .collect::<Vec<_>>();
@@ -555,14 +562,18 @@ fn side_m_scan_ui(
                 &[start, end] => {
                     let scan_idx = start + ((end - start) as f32 * current_rotation) as usize;
 
-                    m_scan_segmentation.get(scan_idx).map(|&seg| {
+                    m_scan_segmentation.get(scan_idx).and_then(|&seg| {
+                        if seg >= textures_state.a_scan_samples {
+                            return None;
+                        }
+
                         let y = seg as f32 / textures_state.a_scan_samples as f32;
                         let y = rect.center().y - y * rect.height() * 0.5;
 
                         let x = (i as f32 + 0.5) / (b_scan_segmentation.len() - 1) as f32;
                         let x = rect.left() + x * rect.width();
 
-                        pos2(x, y)
+                        Some(pos2(x, y))
                     })
                 }
                 _ => None,
@@ -577,14 +588,18 @@ fn side_m_scan_ui(
                     let scan_idx =
                         start + ((end - start) as f32 * ((current_rotation + 0.5) % 1.0)) as usize;
 
-                    m_scan_segmentation.get(scan_idx).map(|&seg| {
+                    m_scan_segmentation.get(scan_idx).and_then(|&seg| {
+                        if seg >= textures_state.a_scan_samples {
+                            return None;
+                        }
+
                         let y = seg as f32 / textures_state.a_scan_samples as f32;
                         let y = rect.center().y + y * rect.height() * 0.5;
 
                         let x = (i as f32 + 0.5) / (b_scan_segmentation.len() - 1) as f32;
                         let x = rect.left() + x * rect.width();
 
-                        pos2(x, y)
+                        Some(pos2(x, y))
                     })
                 }
                 _ => None,
