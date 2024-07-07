@@ -144,7 +144,7 @@ impl EditNode for Node {
             FilterType::WidenStructures => {
                 ui.add(
                     DragValue::new(&mut self.widen_structures_settings.width)
-                        .clamp_range(0..=50)
+                        .clamp_range(0..=300)
                         .prefix("Size: "),
                 );
             }
