@@ -40,7 +40,14 @@ async fn main() {
             },
             ..Default::default()
         },
-        Box::new(|cc| Box::new(IVOCTTestApp::new(cc))),
+        Box::new(|cc| {
+            cc.egui_ctx.set_style(egui::Style {
+                visuals: egui::Visuals::dark(),
+                ..egui::Style::default()
+            });
+
+            Box::new(IVOCTTestApp::new(cc))
+        }),
     )
     .unwrap();
 }
