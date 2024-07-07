@@ -1,7 +1,7 @@
 use std::{
     iter::Sum,
-    ops::{Mul, Sub},
-    sync::Arc,
+    ops::{DerefMut, Mul, Sub},
+    sync::{Arc, Mutex},
 };
 
 use futures::FutureExt;
@@ -159,6 +159,19 @@ impl NodeTask for Task {
 
         let mut processed_a_scans = 0;
 
+        let mut chunk_ends = Vec::new();
+        let mut chunks_send = 0;
+
+        struct Shared {
+            lumen_from_start: Vec<u32>,
+            interpolated_til: usize,
+        }
+
+        let shared = Arc::new(Mutex::new(Shared {
+            lumen_from_start: Vec::new(),
+            interpolated_til: 0,
+        }));
+
         loop {
             let m_scan = match m_scan.recv().await {
                 Ok(m_scan) => m_scan,
@@ -167,6 +180,7 @@ impl NodeTask for Task {
             };
 
             let m_scan_count = m_scan.ncols();
+            chunk_ends.push(processed_a_scans + m_scan_count);
 
             while catheter_seg.len() <= processed_a_scans + m_scan_count {
                 let catheter_segmentation = match catheter_segmentation.recv().await {
@@ -204,58 +218,95 @@ impl NodeTask for Task {
 
             let catheter_seg = catheter_seg.clone();
 
-            let (lumen_line, end_height) =
-                tokio::task::spawn_blocking(move || match m_scan.as_ref() {
-                    DataMatrix::U8(m_scan) => follow_lumen(
-                        m_scan.as_view(),
-                        catheter_seg,
-                        start_height.unwrap(),
-                        processed_a_scans,
-                        &settings,
-                    ),
-                    DataMatrix::U16(m_scan) => follow_lumen(
-                        m_scan.as_view(),
-                        catheter_seg,
-                        start_height.unwrap(),
-                        processed_a_scans,
-                        &settings,
-                    ),
-                    DataMatrix::U32(m_scan) => follow_lumen(
-                        m_scan.as_view(),
-                        catheter_seg,
-                        start_height.unwrap(),
-                        processed_a_scans,
-                        &settings,
-                    ),
-                    DataMatrix::U64(m_scan) => follow_lumen(
-                        m_scan.as_view(),
-                        catheter_seg,
-                        start_height.unwrap(),
-                        processed_a_scans,
-                        &settings,
-                    ),
-                    DataMatrix::F32(m_scan) => follow_lumen(
-                        m_scan.as_view(),
-                        catheter_seg,
-                        start_height.unwrap(),
-                        processed_a_scans,
-                        &settings,
-                    ),
-                    DataMatrix::F64(m_scan) => follow_lumen(
-                        m_scan.as_view(),
-                        catheter_seg,
-                        start_height.unwrap(),
-                        processed_a_scans,
-                        &settings,
-                    ),
-                })
-                .await?;
+            let end_height = tokio::task::spawn_blocking({
+                let shared = shared.clone();
+
+                move || {
+                    let (lumen_line, end_height) = match m_scan.as_ref() {
+                        DataMatrix::U8(m_scan) => follow_lumen(
+                            m_scan.as_view(),
+                            catheter_seg,
+                            start_height.unwrap(),
+                            processed_a_scans,
+                            &settings,
+                        ),
+                        DataMatrix::U16(m_scan) => follow_lumen(
+                            m_scan.as_view(),
+                            catheter_seg,
+                            start_height.unwrap(),
+                            processed_a_scans,
+                            &settings,
+                        ),
+                        DataMatrix::U32(m_scan) => follow_lumen(
+                            m_scan.as_view(),
+                            catheter_seg,
+                            start_height.unwrap(),
+                            processed_a_scans,
+                            &settings,
+                        ),
+                        DataMatrix::U64(m_scan) => follow_lumen(
+                            m_scan.as_view(),
+                            catheter_seg,
+                            start_height.unwrap(),
+                            processed_a_scans,
+                            &settings,
+                        ),
+                        DataMatrix::F32(m_scan) => follow_lumen(
+                            m_scan.as_view(),
+                            catheter_seg,
+                            start_height.unwrap(),
+                            processed_a_scans,
+                            &settings,
+                        ),
+                        DataMatrix::F64(m_scan) => follow_lumen(
+                            m_scan.as_view(),
+                            catheter_seg,
+                            start_height.unwrap(),
+                            processed_a_scans,
+                            &settings,
+                        ),
+                    };
+
+                    let mut shared = shared.lock().unwrap();
+                    let shared = shared.deref_mut();
+
+                    shared.lumen_from_start.extend(lumen_line.iter().copied());
+
+                    interpolate_lumen(&mut shared.lumen_from_start, &mut shared.interpolated_til);
+
+                    end_height
+                }
+            })
+            .await?;
+
+            let mut shared = shared.lock().unwrap();
+            let shared = shared.deref_mut();
+
+            while chunk_ends
+                .get(chunks_send)
+                .map_or(false, |&end| shared.interpolated_til >= end)
+            {
+                let chunk_start = chunk_ends.get(chunks_send - 1).copied().unwrap_or(0);
+                let lumen_line = &shared.lumen_from_start[chunk_start..chunk_ends[chunks_send]];
+
+                tx.send(Arc::new(DVector::from_column_slice(lumen_line)));
+
+                chunks_send += 1;
+            }
 
             start_height = Some(end_height);
 
             processed_a_scans += m_scan_count;
+        }
 
-            tx.send(Arc::new(lumen_line.into()));
+        let mut shared = shared.lock().unwrap();
+        let shared = shared.deref_mut();
+
+        if shared.interpolated_til < processed_a_scans {
+            let chunk_start = chunk_ends.get(chunks_send - 1).copied().unwrap_or(0);
+            let lumen_line = &shared.lumen_from_start[chunk_start..];
+
+            tx.send(Arc::new(DVector::from_column_slice(lumen_line)));
         }
 
         Ok(())
@@ -377,4 +428,47 @@ where
 
 fn hann(x: f64) -> f64 {
     0.5 * (1.0 - (2.0 * std::f64::consts::PI * x).cos())
+}
+
+fn interpolate_lumen(lumen: &mut Vec<u32>, til: &mut usize) {
+    if *til == 0 && lumen[0] == u32::MAX {
+        let mut next_known = 1;
+        while next_known < lumen.len() && lumen[next_known] == u32::MAX {
+            next_known += 1;
+        }
+        lumen[0] = lumen[next_known];
+        *til += 1;
+    }
+
+    let mut i = *til;
+
+    while i < lumen.len() {
+        if lumen[i] == u32::MAX {
+            let mut j = i + 1;
+            while j < lumen.len() && lumen[j] == u32::MAX {
+                j += 1;
+            }
+
+            if j < lumen.len() {
+                let start = lumen[i - 1];
+                let end = lumen[j];
+
+                let diff = end as i32 - start as i32;
+                let len = j - i;
+
+                for k in 0..len {
+                    lumen[i + k] = (start as i32 + diff * k as i32 / len as i32) as u32;
+                }
+
+                i = j + 1;
+            } else {
+                *til = i;
+                break;
+            }
+        } else {
+            i += 1;
+        }
+    }
+
+    *til = lumen.len();
 }
