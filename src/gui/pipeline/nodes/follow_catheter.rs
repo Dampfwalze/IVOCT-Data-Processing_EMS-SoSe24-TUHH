@@ -66,5 +66,14 @@ impl EditNode for Node {
         ui.add(DragValue::new(&mut self.settings.start_height).prefix("Start Height: "));
 
         ui.add(DragValue::new(&mut self.settings.window_extend).prefix("Radius: "));
+
+        ui.add(DragValue::new(&mut self.settings.smoothing_window).prefix("Smoothing Size: "));
+
+        ui.add(
+            DragValue::new(&mut self.settings.threshold)
+                .speed(0.02)
+                .clamp_range(0.0..=2.0)
+                .prefix("Seg Threshold: "),
+        );
     }
 }

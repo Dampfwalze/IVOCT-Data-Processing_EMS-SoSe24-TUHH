@@ -524,7 +524,7 @@ fn gauss_kernel(sigma: f32, kernel_size: Vector2<usize>) -> DMatrix<f32> {
 
 fn compute_median_par<T>(matrix: DMatrixView<T>, size: Vector2<usize>) -> DMatrix<T>
 where
-    T: Scalar + Send + Sync + Copy + PartialOrd + 'static,
+    T: Scalar + Send + Sync + Copy + PartialOrd + Zero + 'static,
 {
     use rayon::prelude::*;
 
@@ -569,7 +569,15 @@ where
                     }
                 }
 
-                bucket.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+                bucket.sort_unstable_by(|a, b| {
+                    a.partial_cmp(b).unwrap_or_else(|| {
+                        if a.partial_cmp(&T::zero()).is_none() {
+                            std::cmp::Ordering::Greater
+                        } else {
+                            std::cmp::Ordering::Less
+                        }
+                    })
+                });
 
                 *value = bucket[bucket_center];
             }
@@ -717,6 +725,13 @@ where
                 .for_each(|(value, (mean, local_variance))| {
                     let filter = *mean
                         + ((*local_variance - noise_variance) / *local_variance) * (*value - *mean);
+
+                    // Check for NaN
+                    let filter = match filter.partial_cmp(&T::zero()) {
+                        None => T::one(),
+                        Some(_) => filter,
+                    };
+
                     *value *= filter;
                 });
         });
