@@ -5,6 +5,16 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use simba::scalar::SubsetOf;
 
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct BScanDiameter {
+    pub b_scan_start: usize,
+    pub b_scan_end: usize,
+
+    pub min: f32,
+    pub max: f32,
+    pub mean: f32,
+}
+
 // MARK: DataType
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

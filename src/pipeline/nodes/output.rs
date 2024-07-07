@@ -94,6 +94,7 @@ impl PipelineNode for Node {
                 PipelineDataType::MScanSegmentation => {
                     TaskInputType::MScanSegmentation(TaskInput::default())
                 }
+                PipelineDataType::Diameter => TaskInputType::Diameter(TaskInput::default()),
             },
         });
     }
@@ -108,6 +109,7 @@ enum TaskInputType {
     MScan(TaskInput<requests::MScan>),
     BScanSegmentation(TaskInput<requests::BScanSegmentation>),
     MScanSegmentation(TaskInput<requests::MScanSegmentation>),
+    Diameter(TaskInput<requests::Diameter>),
 }
 
 impl TaskInputType {
@@ -118,6 +120,7 @@ impl TaskInputType {
             TaskInputType::MScan(input) => input.disconnect(),
             TaskInputType::BScanSegmentation(input) => input.disconnect(),
             TaskInputType::MScanSegmentation(input) => input.disconnect(),
+            TaskInputType::Diameter(input) => input.disconnect(),
         }
     }
 }
@@ -177,6 +180,13 @@ impl NodeTask for Task {
                     let mut task_input = TaskInput::<requests::MScanSegmentation>::default();
                     if task_input.connect(input) {
                         resulting = Some(TaskInputType::MScanSegmentation(task_input));
+                        break;
+                    }
+                }
+                PipelineDataType::Diameter => {
+                    let mut task_input = TaskInput::<requests::Diameter>::default();
+                    if task_input.connect(input) {
+                        resulting = Some(TaskInputType::Diameter(task_input));
                         break;
                     }
                 }
@@ -326,6 +336,42 @@ impl NodeTask for Task {
                     file.write_all(bytemuck::cast_slice(value.as_slice()))
                         .await?;
                 }
+                let _ = self.progress_tx.send(Progress::Idle);
+            }
+            TaskInputType::Diameter(input) => {
+                let mut file = fs::File::create(&self.path).await?;
+
+                let Some(res) = input.request(requests::Diameter).await else {
+                    return Ok(());
+                };
+
+                let Some(mut rx) = res.subscribe() else {
+                    return Err(anyhow!("Failed to subscribe to Diameter"));
+                };
+
+                let _ = self.progress_tx.send(Progress::Working(None));
+
+                let mut output = String::new();
+
+                let mut scan_number = 1;
+
+                loop {
+                    let diameter = match rx.recv().await {
+                        Err(RecvError::Closed) => break,
+                        Err(e) => Err(e)?,
+                        Ok(scan) => scan,
+                    };
+
+                    output += &format!(
+                        "{}, {} mm, {} mm\n",
+                        scan_number, diameter.min, diameter.max
+                    );
+
+                    scan_number += 1;
+                }
+
+                file.write_all(output.as_bytes()).await?;
+
                 let _ = self.progress_tx.send(Progress::Idle);
             }
         }

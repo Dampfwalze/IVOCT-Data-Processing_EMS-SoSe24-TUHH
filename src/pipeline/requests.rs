@@ -4,7 +4,10 @@ use nalgebra::DVector;
 
 use crate::queue_channel;
 
-use super::{execution::Request, types::*};
+use super::{
+    execution::Request,
+    types::{self, *},
+};
 
 //MARK: Structures
 
@@ -22,6 +25,9 @@ pub struct BScanSegmentation;
 
 #[derive(Debug, Clone, Copy)]
 pub struct MScanSegmentation;
+
+#[derive(Debug, Clone, Copy)]
+pub struct Diameter;
 
 //MARK: Implementations
 
@@ -58,6 +64,14 @@ impl Request for BScanSegmentation {
 
 impl Request for MScanSegmentation {
     type Response = StreamedResponse<Arc<DVector<u32>>>;
+
+    fn is_response_valid(&self, response: &Self::Response) -> bool {
+        !response.is_lagged()
+    }
+}
+
+impl Request for Diameter {
+    type Response = StreamedResponse<types::BScanDiameter>;
 
     fn is_response_valid(&self, response: &Self::Response) -> bool {
         !response.is_lagged()

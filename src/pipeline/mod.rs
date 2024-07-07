@@ -23,6 +23,7 @@ pub enum PipelineDataType {
     MScan,
     BScanSegmentation,
     MScanSegmentation,
+    Diameter,
 }
 
 impl_enum_from_into_id_types!(PipelineDataType, [TypeId], {
@@ -31,15 +32,17 @@ impl_enum_from_into_id_types!(PipelineDataType, [TypeId], {
     2 => MScan,
     3 => BScanSegmentation,
     4 => MScanSegmentation,
+    5 => Diameter,
 });
 
 impl PipelineDataType {
-    pub const VALUES: [PipelineDataType; 5] = [
+    pub const VALUES: [PipelineDataType; 6] = [
         PipelineDataType::RawMScan,
         PipelineDataType::DataVector,
         PipelineDataType::MScan,
         PipelineDataType::BScanSegmentation,
         PipelineDataType::MScanSegmentation,
+        PipelineDataType::Diameter,
     ];
 }
 

@@ -1,4 +1,5 @@
 pub mod binary_input;
+pub mod diameter;
 pub mod filter;
 pub mod follow_catheter;
 pub mod follow_lumen;
