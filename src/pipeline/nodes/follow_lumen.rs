@@ -270,9 +270,9 @@ fn find_start_height<T>(m_scan: DMatrixView<T>, start_height: u32) -> u32
 where
     T: nalgebra::Scalar + Clone + Copy + PartialOrd + Zero + Mul<Output = T> + num_traits::NumCast,
 {
-    let start_height = (start_height + 20).min(m_scan.nrows() as u32 - 1);
+    let start_height = (start_height as usize + 20).min(m_scan.nrows() - 1);
 
-    let a_scan = m_scan.get((start_height as usize.., 0)).unwrap();
+    let a_scan = m_scan.get((start_height.., 0)).unwrap();
 
     let min = a_scan
         .iter()
@@ -293,7 +293,7 @@ where
 
     for (i, &v) in a_scan.iter().enumerate() {
         if v > threshold {
-            return i as u32;
+            return (start_height + i) as u32;
         }
     }
 
@@ -330,7 +330,7 @@ where
 
         let window = m_scan.get((window_start..=window_end, i)).unwrap();
 
-        let mut max_index = height - window_start;
+        let mut max_index = usize::MAX;
         for (i, value) in window.iter().copied().enumerate() {
             let value = value.to_f64().unwrap()
                 * hann(i as f64 / ((st.window_extend_up + st.window_extend_down + 1) as f64));
@@ -340,9 +340,13 @@ where
             }
         }
 
-        height = (window_start + max_index).min(m_scan.nrows() - 1);
+        if max_index != usize::MAX {
+            height = (window_start + max_index).min(m_scan.nrows() - 1);
 
-        lumen_line[i] = height as u32;
+            lumen_line[i] = height as u32;
+        } else {
+            lumen_line[i] = u32::MAX;
+        }
     }
 
     let end_height = height as u32;
@@ -350,6 +354,10 @@ where
     if st.check_artifact {
         // Remove where there is artifact above
         for i in 0..m_scan.ncols() {
+            if lumen_line[i] == u32::MAX {
+                continue;
+            }
+
             let window_start = (catheter_seg[m_scan_offset + i] + 10).min(lumen_line[i]) as usize;
             let Some(window) = m_scan.get((window_start..lumen_line[i] as usize, i)) else {
                 continue;
