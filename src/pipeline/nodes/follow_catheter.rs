@@ -1,5 +1,5 @@
 use std::{
-    fmt::{Debug, Display},
+    fmt::Debug,
     ops::{Mul, Sub},
     sync::{Arc, Mutex},
 };
@@ -16,9 +16,7 @@ use super::prelude::*;
 pub struct Settings {
     pub start_height: u32,
     pub window_extend: usize,
-    #[serde(default)]
     pub smoothing_window: usize,
-    #[serde(default)]
     pub threshold: f64,
 }
 
@@ -47,7 +45,6 @@ impl_enum_from_into_id_types!(InputId, [graph::InputId], {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Node {
-    #[serde(default)]
     pub settings: Settings,
 
     pub m_scan: NodeInput<()>,

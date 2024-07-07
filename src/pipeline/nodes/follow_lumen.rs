@@ -14,14 +14,10 @@ use super::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
-    #[serde(default)]
     pub window_extend_up: usize,
-    #[serde(default)]
     pub window_extend_down: usize,
     pub threshold: f64,
-    #[serde(default)]
     pub check_artifact: bool,
-    #[serde(default)]
     pub artifact_threshold: f64,
 }
 

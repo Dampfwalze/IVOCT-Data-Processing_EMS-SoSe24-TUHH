@@ -1,161 +1,344 @@
 [
-    {
-        "nodes": {
-            "1": {
-                "type": "binary_input",
-                "path": "C:\\Users\\pauls\\Desktop\\test_IVOCT\\phantom1_2_4.dat",
-                "input_type": "RawMScan",
-                "data_type": "U16",
-                "a_scan_length": 1024
-            },
-            "2": {
-                "type": "binary_input",
-                "path": "C:\\Users\\pauls\\Desktop\\test_IVOCT\\offset.bin",
-                "input_type": "DataVector",
-                "data_type": "F64",
-                "a_scan_length": 1024
-            },
-            "5": {
-                "type": "remove_detector_defect",
-                "upper": 225,
-                "lower": 219,
-                "m_scan": {
-                    "value": null,
-                    "connection": {
-                        "node_id": 4,
-                        "output_id": 0,
-                        "type_id": 2
-                    }
-                }
-            },
-            "6": {
-                "type": "filter",
-                "filter_type": "Gaussian",
-                "gauss_settings": {
-                    "kernel_size": [
-                        3,
-                        10
-                    ],
-                    "sigma": 5.0
-                },
-                "input": {
-                    "value": null,
-                    "connection": {
-                        "node_id": 5,
-                        "output_id": 0,
-                        "type_id": 2
-                    }
-                }
-            },
-            "3": {
-                "type": "binary_input",
-                "path": "C:\\Users\\pauls\\Desktop\\test_IVOCT\\chirp.bin",
-                "input_type": "DataVector",
-                "data_type": "F64",
-                "a_scan_length": 1024
-            },
-            "7": {
-                "type": "segment_b_scans",
-                "settings": {
-                    "neighbor_count": 3,
-                    "neighborhood_width": 50,
-                    "search_range_start": 7000,
-                    "search_range_end": 8000,
-                    "offset": 0
-                },
-                "m_scan": {
-                    "value": null,
-                    "connection": {
-                        "node_id": 6,
-                        "output_id": 0,
-                        "type_id": 2
-                    }
-                }
-            },
-            "4": {
-                "type": "process_raw_m_scan",
-                "factor": 540.0,
-                "rescale_cutoff": 100,
-                "raw_scan": {
-                    "value": null,
-                    "connection": {
-                        "node_id": 1,
-                        "output_id": 0,
-                        "type_id": 0
-                    }
-                },
-                "offset": {
-                    "value": null,
-                    "connection": {
-                        "node_id": 2,
-                        "output_id": 2,
-                        "type_id": 1
-                    }
-                },
-                "chirp": {
-                    "value": null,
-                    "connection": {
-                        "node_id": 3,
-                        "output_id": 2,
-                        "type_id": 1
-                    }
-                }
-            }
-        }
-    },
-    {
-        "node_states": {
-            "5": {
-                "position": {
-                    "x": 555.0,
-                    "y": 5.0
-                }
-            },
-            "2": {
-                "position": {
-                    "x": 5.0,
-                    "y": 160.0
-                }
-            },
-            "6": {
-                "position": {
-                    "x": 805.0,
-                    "y": 5.0
-                }
-            },
-            "3": {
-                "position": {
-                    "x": 5.0,
-                    "y": 300.0
-                }
-            },
-            "7": {
-                "position": {
-                    "x": 1055.0,
-                    "y": 5.0
-                }
-            },
-            "4": {
-                "position": {
-                    "x": 305.0,
-                    "y": 5.0
-                }
-            },
-            "1": {
-                "position": {
-                    "x": 5.0,
-                    "y": 5.0
-                }
-            }
+  {
+    "nodes": {
+      "1": {
+        "type": "binary_input",
+        "path": "C:\\Users\\pauls\\Desktop\\test_IVOCT\\phantom1_2_4.dat",
+        "input_type": "RawMScan",
+        "data_type": "U16",
+        "a_scan_length": 1024
+      },
+      "2": {
+        "type": "binary_input",
+        "path": "C:\\Users\\pauls\\Desktop\\test_IVOCT\\offset.bin",
+        "input_type": "DataVector",
+        "data_type": "F64",
+        "a_scan_length": 1024
+      },
+      "3": {
+        "type": "binary_input",
+        "path": "C:\\Users\\pauls\\Desktop\\test_IVOCT\\chirp.bin",
+        "input_type": "DataVector",
+        "data_type": "F64",
+        "a_scan_length": 1024
+      },
+      "4": {
+        "type": "process_raw_m_scan",
+        "factor": 540.0,
+        "rescale_cutoff": 100,
+        "raw_scan": {
+          "value": null,
+          "connection": {
+            "node_id": 1,
+            "output_id": 0,
+            "type_id": 0
+          }
         },
-        "node_order": [
-            1,
-            2,
+        "offset": {
+          "value": null,
+          "connection": {
+            "node_id": 2,
+            "output_id": 2,
+            "type_id": 1
+          }
+        },
+        "chirp": {
+          "value": null,
+          "connection": {
+            "node_id": 3,
+            "output_id": 2,
+            "type_id": 1
+          }
+        }
+      },
+      "5": {
+        "type": "remove_detector_defect",
+        "upper": 226,
+        "lower": 218,
+        "m_scan": {
+          "value": null,
+          "connection": {
+            "node_id": 4,
+            "output_id": 0,
+            "type_id": 2
+          }
+        }
+      },
+      "6": {
+        "type": "filter",
+        "filter_type": "Gaussian",
+        "gauss_settings": {
+          "kernel_size": [
             3,
-            4,
-            5,
-            6,
-            7
-        ]
+            10
+          ],
+          "sigma": 5.0
+        },
+        "median_settings": {
+          "size": [
+            3,
+            3
+          ]
+        },
+        "wiener_settings": {
+          "neighborhood_size": [
+            3,
+            3
+          ]
+        },
+        "prewitt_settings": {
+          "threshold": 0.0
+        },
+        "widen_structures_settings": {
+          "width": 3
+        },
+        "b_w_area_open_settings": {
+          "area": 10,
+          "connection_type": "Star4"
+        },
+        "input": {
+          "value": null,
+          "connection": {
+            "node_id": 5,
+            "output_id": 0,
+            "type_id": 2
+          }
+        }
+      },
+      "7": {
+        "type": "segment_b_scans",
+        "settings": {
+          "neighbor_count": 3,
+          "neighborhood_width": 50,
+          "search_range_start": 7000,
+          "search_range_end": 8000,
+          "offset": 0
+        },
+        "m_scan": {
+          "value": null,
+          "connection": {
+            "node_id": 6,
+            "output_id": 0,
+            "type_id": 2
+          }
+        }
+      },
+      "8": {
+        "type": "filter",
+        "filter_type": "Prewitt",
+        "gauss_settings": {
+          "kernel_size": [
+            3,
+            3
+          ],
+          "sigma": 1.0
+        },
+        "median_settings": {
+          "size": [
+            3,
+            3
+          ]
+        },
+        "wiener_settings": {
+          "neighborhood_size": [
+            3,
+            3
+          ]
+        },
+        "prewitt_settings": {
+          "threshold": 0.19
+        },
+        "widen_structures_settings": {
+          "width": 3
+        },
+        "b_w_area_open_settings": {
+          "area": 10,
+          "connection_type": "Star4"
+        },
+        "input": {
+          "value": null,
+          "connection": {
+            "node_id": 6,
+            "output_id": 0,
+            "type_id": 2
+          }
+        }
+      },
+      "9": {
+        "type": "filter",
+        "filter_type": "WidenStructures",
+        "gauss_settings": {
+          "kernel_size": [
+            3,
+            3
+          ],
+          "sigma": 1.0
+        },
+        "median_settings": {
+          "size": [
+            3,
+            3
+          ]
+        },
+        "wiener_settings": {
+          "neighborhood_size": [
+            3,
+            3
+          ]
+        },
+        "prewitt_settings": {
+          "threshold": 0.0
+        },
+        "widen_structures_settings": {
+          "width": 40
+        },
+        "b_w_area_open_settings": {
+          "area": 10,
+          "connection_type": "Star4"
+        },
+        "input": {
+          "value": null,
+          "connection": {
+            "node_id": 8,
+            "output_id": 0,
+            "type_id": 2
+          }
+        }
+      },
+      "10": {
+        "type": "follow_catheter",
+        "settings": {
+          "start_height": 120,
+          "window_extend": 8,
+          "smoothing_window": 1000,
+          "threshold": 0.2
+        },
+        "m_scan": {
+          "value": null,
+          "connection": {
+            "node_id": 9,
+            "output_id": 0,
+            "type_id": 2
+          }
+        },
+        "b_scan_segmentation": {
+          "value": null,
+          "connection": {
+            "node_id": 7,
+            "output_id": 0,
+            "type_id": 3
+          }
+        }
+      },
+      "11": {
+        "type": "follow_lumen",
+        "settings": {
+          "window_extend_up": 26,
+          "window_extend_down": 50,
+          "threshold": 0.1,
+          "check_artifact": true,
+          "artifact_threshold": 0.15
+        },
+        "m_scan": {
+          "value": null,
+          "connection": {
+            "node_id": 9,
+            "output_id": 0,
+            "type_id": 2
+          }
+        },
+        "catheter_segmentation": {
+          "value": null,
+          "connection": {
+            "node_id": 10,
+            "output_id": 0,
+            "type_id": 4
+          }
+        }
+      }
     }
+  },
+  {
+    "node_states": {
+      "1": {
+        "position": {
+          "x": 5.0,
+          "y": 80.0
+        }
+      },
+      "2": {
+        "position": {
+          "x": 5.0,
+          "y": 240.0
+        }
+      },
+      "3": {
+        "position": {
+          "x": 5.0,
+          "y": 380.0
+        }
+      },
+      "4": {
+        "position": {
+          "x": 305.0,
+          "y": 80.0
+        }
+      },
+      "5": {
+        "position": {
+          "x": 555.0,
+          "y": 80.0
+        }
+      },
+      "6": {
+        "position": {
+          "x": 805.0,
+          "y": 80.0
+        }
+      },
+      "7": {
+        "position": {
+          "x": 1175.0,
+          "y": 185.0
+        }
+      },
+      "8": {
+        "position": {
+          "x": 1055.0,
+          "y": 5.0
+        }
+      },
+      "9": {
+        "position": {
+          "x": 1305.0,
+          "y": 5.0
+        }
+      },
+      "10": {
+        "position": {
+          "x": 1555.0,
+          "y": 80.0
+        }
+      },
+      "11": {
+        "position": {
+          "x": 1805.0,
+          "y": 5.0
+        }
+      }
+    },
+    "node_order": [
+      2,
+      3,
+      4,
+      1,
+      7,
+      10,
+      8,
+      5,
+      9,
+      11,
+      6
+    ]
+  }
 ]
