@@ -259,6 +259,7 @@ impl DataView for View {
                             textures_state,
                             texture_bind_group.clone(),
                             b_scan_segmentation.as_slice(),
+                            m_scan_segmentation,
                         )
                     }
                 }
@@ -282,7 +283,8 @@ impl DataView for View {
                         textures_state,
                         texture_bind_group.clone(),
                         bind_group.clone(),
-                        b_scan_segmentation.len(),
+                        b_scan_segmentation,
+                        m_scan_segmentation,
                     )
                 } else {
                     polar_m_scan_ui(
@@ -407,6 +409,7 @@ fn cartesian_m_scan_ui(
     textures_state: &TexturesState,
     texture_bind_group: Arc<wgpu::BindGroup>,
     b_scan_segmentation: &[usize],
+    m_scan_segmentation: Option<&[usize]>,
 ) {
     let (rect, response) = ui.allocate_exact_size(
         Vec2::splat(ui.available_height().min(ui.available_width())),
@@ -431,6 +434,33 @@ fn cartesian_m_scan_ui(
                 rect: Rect::from_min_max(Vec2::splat(-1.0).to_pos2(), Vec2::splat(1.0).to_pos2()),
             },
         ));
+
+    if let Some(m_scan_segmentation) = m_scan_segmentation {
+        let b_scan_start = b_scan_segmentation[current_b_scan];
+        let b_scan_end = b_scan_segmentation[current_b_scan + 1];
+        let b_scan_size = b_scan_end - b_scan_start;
+        let radius = rect.width() / 2.0;
+        let step_size = (b_scan_size / 200).max(1);
+
+        let points = (b_scan_start..b_scan_end)
+            .step_by(step_size)
+            .filter_map(|i| {
+                m_scan_segmentation.get(i).map(|&seg| {
+                    let alpha = (i - b_scan_start) as f32 / b_scan_size as f32;
+                    let alpha = alpha * std::f32::consts::TAU;
+
+                    let vec = seg as f32 / textures_state.a_scan_samples as f32
+                        * Vec2::angled(alpha)
+                        * radius;
+
+                    rect.center() + vec2(-vec.y, -vec.x)
+                })
+            })
+            .collect::<Vec<_>>();
+
+        ui.painter()
+            .add(Shape::closed_line(points, Stroke::new(1.0, Color32::RED)));
+    }
 
     // Draw current_rotation line
     let current_rotation = ui
@@ -496,7 +526,8 @@ fn side_m_scan_ui(
     textures_state: &TexturesState,
     texture_bind_group: Arc<wgpu::BindGroup>,
     b_scan_bind_group: Arc<wgpu::BindGroup>,
-    b_scan_count: usize,
+    b_scan_segmentation: &[usize],
+    m_scan_segmentation: Option<&[usize]>,
 ) -> egui::Response {
     let response = ui.allocate_response(ui.available_size(), Sense::hover());
 
@@ -515,13 +546,66 @@ fn side_m_scan_ui(
             },
         ));
 
+    if let Some(m_scan_segmentation) = m_scan_segmentation {
+        let rect = response.rect;
+        let points1 = b_scan_segmentation
+            .windows(2)
+            .enumerate()
+            .filter_map(|(i, seg)| match seg {
+                &[start, end] => {
+                    let scan_idx = start + ((end - start) as f32 * current_rotation) as usize;
+
+                    m_scan_segmentation.get(scan_idx).map(|&seg| {
+                        let y = seg as f32 / textures_state.a_scan_samples as f32;
+                        let y = rect.center().y - y * rect.height() * 0.5;
+
+                        let x = (i as f32 + 0.5) / (b_scan_segmentation.len() - 1) as f32;
+                        let x = rect.left() + x * rect.width();
+
+                        pos2(x, y)
+                    })
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        let points2 = b_scan_segmentation
+            .windows(2)
+            .enumerate()
+            .filter_map(|(i, seg)| match seg {
+                &[start, end] => {
+                    let scan_idx =
+                        start + ((end - start) as f32 * ((current_rotation + 0.5) % 1.0)) as usize;
+
+                    m_scan_segmentation.get(scan_idx).map(|&seg| {
+                        let y = seg as f32 / textures_state.a_scan_samples as f32;
+                        let y = rect.center().y + y * rect.height() * 0.5;
+
+                        let x = (i as f32 + 0.5) / (b_scan_segmentation.len() - 1) as f32;
+                        let x = rect.left() + x * rect.width();
+
+                        pos2(x, y)
+                    })
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        ui.painter()
+            .add(Shape::line(points1, Stroke::new(1.0, Color32::RED)));
+
+        ui.painter()
+            .add(Shape::line(points2, Stroke::new(1.0, Color32::RED)));
+    }
+
     // Draw current_b_scan line
     let current_b_scan = ui
         .data(|d| d.get_temp::<isize>(ui.id().with("current_b_scan")))
         .unwrap_or(0) as f32;
 
     let rect = response.rect;
-    let x = rect.left() + rect.width() * (current_b_scan + 0.5) / (b_scan_count - 1) as f32;
+    let x = rect.left()
+        + rect.width() * (current_b_scan + 0.5) / (b_scan_segmentation.len() - 1) as f32;
     ui.painter().line_segment(
         [
             pos2(x, rect.top()),
