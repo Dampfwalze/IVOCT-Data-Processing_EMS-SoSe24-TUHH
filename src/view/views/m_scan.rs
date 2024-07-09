@@ -389,6 +389,7 @@ fn polar_m_scan_ui(
         .min_zoom(1.0)
         .show(ui, |ui, viewport, n_viewport| {
             let response = ui.allocate_rect(ui.max_rect(), Sense::hover());
+            let rect = response.rect;
 
             let gpu_viewport = Rect::from_min_max(
                 n_viewport.min * 2.0 - Vec2::splat(1.0),
@@ -420,7 +421,6 @@ fn polar_m_scan_ui(
             }
 
             if let Some(m_scan_segmentation) = m_scan_segmentation {
-                let rect = ui.max_rect();
                 let points = (rect.left() as usize..=rect.right() as usize)
                     .filter_map(|global_x| {
                         let viewport_x = (global_x as f32 - viewport.min.x) / viewport.width();
@@ -454,7 +454,7 @@ fn polar_m_scan_ui(
                     .collect::<Vec<_>>();
 
                 ui.painter()
-                    .add(Shape::line(points, Stroke::new(1.0, Color32::RED)));
+                    .add(Shape::line(points, Stroke::new(2.0, Color32::RED)));
             }
         })
         .response
@@ -520,7 +520,7 @@ fn cartesian_m_scan_ui(
             .collect::<Vec<_>>();
 
         ui.painter()
-            .add(Shape::closed_line(points, Stroke::new(1.0, Color32::RED)));
+            .add(Shape::closed_line(points, Stroke::new(2.0, Color32::RED)));
     }
 
     // Draw current_rotation line
@@ -535,11 +535,11 @@ fn cartesian_m_scan_ui(
 
     ui.painter().line_segment(
         [center + vec, center + 0.8 * vec],
-        Stroke::new(1.0, Color32::BLUE),
+        Stroke::new(2.0, Color32::BLUE),
     );
     ui.painter().line_segment(
         [center - vec, center - 0.8 * vec],
-        Stroke::new(1.0, Color32::BLUE),
+        Stroke::new(2.0, Color32::BLUE),
     );
 }
 
@@ -663,10 +663,10 @@ fn side_m_scan_ui(
             .collect::<Vec<_>>();
 
         ui.painter()
-            .add(Shape::line(points1, Stroke::new(1.0, Color32::RED)));
+            .add(Shape::line(points1, Stroke::new(2.0, Color32::RED)));
 
         ui.painter()
-            .add(Shape::line(points2, Stroke::new(1.0, Color32::RED)));
+            .add(Shape::line(points2, Stroke::new(2.0, Color32::RED)));
     }
 
     // Draw current_b_scan line
@@ -682,14 +682,14 @@ fn side_m_scan_ui(
             pos2(x, rect.top()),
             pos2(x, rect.top() + rect.height() * 0.1),
         ],
-        Stroke::new(1.0, Color32::BLUE),
+        Stroke::new(2.0, Color32::BLUE),
     );
     ui.painter().line_segment(
         [
             pos2(x, rect.bottom()),
             pos2(x, rect.bottom() - rect.height() * 0.1),
         ],
-        Stroke::new(1.0, Color32::BLUE),
+        Stroke::new(2.0, Color32::BLUE),
     );
 
     response
