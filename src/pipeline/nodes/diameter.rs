@@ -10,6 +10,10 @@ pub struct Settings {
     pub mm_per_pixel: f32,
     #[serde(default)]
     pub refraction_index: f32,
+    #[serde(default)]
+    pub catheter_diameter: f32,
+    #[serde(default)]
+    pub use_catheter_diameter: bool,
 }
 
 impl Default for Settings {
@@ -17,6 +21,8 @@ impl Default for Settings {
         Self {
             mm_per_pixel: 0.0055,
             refraction_index: 1.33,
+            catheter_diameter: 0.9,
+            use_catheter_diameter: false,
         }
     }
 }
@@ -216,13 +222,19 @@ fn calculate_diameter(
     b_scan_end: usize,
     catheter: &[u32],
     lumen: &[u32],
-    settings: &Settings,
+    st: &Settings,
 ) -> BScanDiameter {
     let catheter = &catheter[b_scan_start..b_scan_end];
     let lumen = &lumen[b_scan_start..b_scan_end];
 
+    let catheter_diameter = if st.use_catheter_diameter {
+        st.catheter_diameter
+    } else {
+        (catheter.iter().sum::<u32>() as f32 / catheter.len() as f32) * 2.0 * st.mm_per_pixel
+    } / st.refraction_index;
+
     let diameters = (0..catheter.len() / 2)
-        .map(|i| calc_diameter(catheter, lumen, i, settings))
+        .map(|i| calc_diameter(catheter, lumen, i, catheter_diameter, st))
         .collect::<Vec<_>>();
 
     let max_diameter = diameters.iter().cloned().reduce(f32::max).unwrap_or(0.0);
@@ -239,7 +251,13 @@ fn calculate_diameter(
     }
 }
 
-fn calc_diameter(catheter: &[u32], lumen: &[u32], offset: usize, settings: &Settings) -> f32 {
+fn calc_diameter(
+    catheter: &[u32],
+    lumen: &[u32],
+    offset: usize,
+    catheter_diameter: f32,
+    st: &Settings,
+) -> f32 {
     assert_eq!(catheter.len(), lumen.len());
     let size = lumen.len();
     let a_idx = offset;
@@ -252,18 +270,15 @@ fn calc_diameter(catheter: &[u32], lumen: &[u32], offset: usize, settings: &Sett
     let c = (lumen[c_idx] - catheter[c_idx]) as f32;
     let d = (lumen[d_idx] - catheter[d_idx]) as f32;
 
-    let mean = (catheter[a_idx] + catheter[b_idx] + catheter[c_idx] + catheter[d_idx]) as f32 / 2.0;
-
-    let mm_per_pixel = settings.mm_per_pixel / settings.refraction_index;
+    let mm_per_pixel = st.mm_per_pixel / st.refraction_index;
 
     let a = a * mm_per_pixel;
     let b = b * mm_per_pixel;
     let c = c * mm_per_pixel;
     let d = d * mm_per_pixel;
-    let mean = mean * mm_per_pixel;
 
     let a_b = a - b;
-    let c_d = c + d + mean;
+    let c_d = c + d + catheter_diameter;
 
     (a_b * a_b + c_d * c_d).sqrt()
 }

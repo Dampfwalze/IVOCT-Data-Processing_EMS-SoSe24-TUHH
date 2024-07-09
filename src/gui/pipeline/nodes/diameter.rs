@@ -1,4 +1,4 @@
-use egui::DragValue;
+use egui::{Checkbox, DragValue};
 
 use crate::pipeline::nodes::diameter::{InputId, Node};
 
@@ -89,5 +89,22 @@ impl EditNode for Node {
                 .speed(0.01)
                 .prefix("refraction index: "),
         );
+
+        ui.label("Catheter diameter");
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 0.0;
+
+            ui.add(Checkbox::without_text(
+                &mut self.settings.use_catheter_diameter,
+            ));
+
+            ui.add_enabled(
+                self.settings.use_catheter_diameter,
+                DragValue::new(&mut self.settings.catheter_diameter)
+                    .clamp_range(0.0..=f32::INFINITY)
+                    .speed(0.01)
+                    .suffix(" mm"),
+            );
+        });
     }
 }
