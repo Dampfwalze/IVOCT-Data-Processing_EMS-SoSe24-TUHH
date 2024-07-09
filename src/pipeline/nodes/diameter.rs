@@ -1,4 +1,5 @@
 use futures::FutureExt;
+use nalgebra::Vector2;
 
 use crate::{pipeline::types::BScanDiameter, queue_channel::error::RecvError};
 
@@ -237,8 +238,20 @@ fn calculate_diameter(
         .map(|i| calc_diameter(catheter, lumen, i, catheter_diameter, st))
         .collect::<Vec<_>>();
 
-    let max_diameter = diameters.iter().cloned().reduce(f32::max).unwrap_or(0.0);
-    let min_diameter = diameters.iter().cloned().reduce(f32::min).unwrap_or(0.0);
+    let (max_offset, max_diameter) = diameters
+        .iter()
+        .cloned()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+        .unwrap();
+
+    let (min_offset, min_diameter) = diameters
+        .iter()
+        .cloned()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+        .unwrap();
+
     let mean_diameter = diameters.iter().sum::<f32>() / diameters.len() as f32;
 
     BScanDiameter {
@@ -248,6 +261,9 @@ fn calculate_diameter(
         max: max_diameter,
         min: min_diameter,
         mean: mean_diameter,
+
+        max_points: calc_diameter_positions(catheter, lumen, max_offset),
+        min_points: calc_diameter_positions(catheter, lumen, min_offset),
     }
 }
 
@@ -281,4 +297,32 @@ fn calc_diameter(
     let c_d = c + d + catheter_diameter;
 
     (a_b * a_b + c_d * c_d).sqrt()
+}
+
+fn calc_diameter_positions(catheter: &[u32], lumen: &[u32], offset: usize) -> [Vector2<f32>; 2] {
+    assert_eq!(catheter.len(), lumen.len());
+    let size = lumen.len();
+    let a_idx = offset;
+    let c_idx = (offset + size / 4) % size;
+    let b_idx = (offset + size / 2) % size;
+    let d_idx = (offset + size * 3 / 4) % size;
+
+    let a = (lumen[a_idx] - catheter[a_idx]) as f32;
+    let b = (lumen[b_idx] - catheter[b_idx]) as f32;
+    let c = (lumen[c_idx] - catheter[c_idx]) as f32;
+    let d = (lumen[d_idx] - catheter[d_idx]) as f32;
+
+    let c = c + catheter[c_idx] as f32;
+    let d = d + catheter[d_idx] as f32;
+
+    let rot = c_idx as f32 / size as f32 * std::f32::consts::TAU;
+    let dir = Vector2::new(rot.cos(), rot.sin());
+    let vec_a_b = Vector2::new(dir.y, -dir.x) * (a - b);
+    let vec_c = dir * c;
+    let vec_d = -dir * d;
+
+    let p1 = vec_d;
+    let p2 = vec_c + vec_a_b;
+
+    [p1, p2]
 }

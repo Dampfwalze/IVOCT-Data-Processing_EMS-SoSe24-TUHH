@@ -1,6 +1,6 @@
 use std::mem;
 
-use nalgebra::{DMatrix, DMatrixView, DVector, Scalar};
+use nalgebra::{DMatrix, DMatrixView, DVector, Scalar, Vector2};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use simba::scalar::SubsetOf;
@@ -13,6 +13,9 @@ pub struct BScanDiameter {
     pub min: f32,
     pub max: f32,
     pub mean: f32,
+
+    pub min_points: [Vector2<f32>; 2],
+    pub max_points: [Vector2<f32>; 2],
 }
 
 // MARK: DataType

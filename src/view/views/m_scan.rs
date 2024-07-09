@@ -3,14 +3,19 @@ use std::{collections::HashSet, num::NonZeroU32, sync::Arc};
 use crate::{
     cache::Cached,
     gui::{color_maps, widgets::PanZoomRect},
+    pipeline::nodes::diameter,
     queue_channel::error::RecvError,
 };
 
 use super::prelude::*;
-use egui::{pos2, vec2, Color32, ComboBox, Layout, Rect, Response, Sense, Shape, Stroke, Vec2};
+use egui::{
+    pos2, vec2, Align2, Color32, ComboBox, FontId, Layout, Rect, Response, Sense, Shape, Stroke,
+    Vec2,
+};
 use futures::future;
-use nalgebra::DVector;
+use nalgebra::{DVector, Vector2};
 use tokio::sync::{watch, RwLock};
+use types::BScanDiameter;
 use wgpu::{util::DeviceExt, PushConstantRange};
 
 /// WGPU requires to specify a maximum number of textures we can bind in a
@@ -22,12 +27,14 @@ pub enum InputId {
     MScan,
     BScanSegmentation,
     MScanSegmentation,
+    Diameter,
 }
 
 impl_enum_from_into_id_types!(InputId, [graph::InputId], {
     0 => MScan,
     1 => BScanSegmentation,
     2 => MScanSegmentation,
+    3 => Diameter,
 });
 
 // MARK: View
@@ -36,6 +43,7 @@ pub struct View {
     m_scan: NodeOutput,
     b_scan_segmentation: Option<NodeOutput>,
     m_scan_segmentation: Option<NodeOutput>,
+    diameter: Option<NodeOutput>,
 
     textures_state: Cached<Option<TexturesState>>,
     device: Arc<wgpu::Device>,
@@ -47,6 +55,8 @@ pub struct View {
     b_scan_segmentation_rx: Option<watch::Receiver<Vec<usize>>>,
     b_scan_segmentation_buffer: Option<(wgpu::Buffer, Arc<wgpu::BindGroup>)>,
     b_scan_segmentation_bind_group_layout: Arc<wgpu::BindGroupLayout>,
+
+    diameter_rx: Option<watch::Receiver<Vec<BScanDiameter>>>,
 
     show_side_view: bool,
     map_idx: u32,
@@ -64,6 +74,7 @@ impl View {
             m_scan: node_output,
             b_scan_segmentation: None,
             m_scan_segmentation: None,
+            diameter: None,
             textures_state: cache.get((node_output.node_id, node_output.output_id)),
             device: render_state.device.clone(),
             queue: render_state.queue.clone(),
@@ -74,6 +85,7 @@ impl View {
             b_scan_segmentation_bind_group_layout: resources
                 .b_scan_segmentation_bind_group_layout
                 .clone(),
+            diameter_rx: None,
             show_side_view: false,
             map_idx: 26,
         }
@@ -86,6 +98,7 @@ impl Clone for View {
             m_scan: self.m_scan.clone(),
             b_scan_segmentation: self.b_scan_segmentation.clone(),
             m_scan_segmentation: self.m_scan_segmentation.clone(),
+            diameter: self.diameter.clone(),
             textures_state: self.textures_state.clone(),
             device: self.device.clone(),
             queue: self.queue.clone(),
@@ -96,6 +109,7 @@ impl Clone for View {
             b_scan_segmentation_bind_group_layout: self
                 .b_scan_segmentation_bind_group_layout
                 .clone(),
+            diameter_rx: None,
             show_side_view: self.show_side_view.clone(),
             map_idx: self.map_idx.clone(),
         }
@@ -138,6 +152,18 @@ impl DataView for View {
                     ..Self::new(m_scan, cache, render_state)
                 })
             }
+            PipelineDataType::Diameter => {
+                let m_scan = find_m_scan_input(pipeline, node_output.node_id)?;
+                let b_scans = find_b_scan_input(pipeline, node_output.node_id);
+                let m_scan_segmentation =
+                    find_m_scan_segmentation_input(pipeline, node_output.node_id);
+                Some(Self {
+                    diameter: Some(*node_output),
+                    b_scan_segmentation: b_scans,
+                    m_scan_segmentation,
+                    ..Self::new(m_scan, cache, render_state)
+                })
+            }
             _ => None,
         }
     }
@@ -147,6 +173,7 @@ impl DataView for View {
             (InputId::MScan, Some(self.m_scan)),
             (InputId::BScanSegmentation, self.b_scan_segmentation),
             (InputId::MScanSegmentation, self.m_scan_segmentation),
+            (InputId::Diameter, self.diameter),
         ]
         .into_iter()
     }
@@ -186,26 +213,34 @@ impl DataView for View {
                 self.m_scan_segmentation = None;
                 Existence::Keep
             }
+            InputId::Diameter => {
+                self.diameter = None;
+                Existence::Keep
+            }
         }
     }
 
     fn create_view_task(&mut self) -> impl DataViewTask<InputId = Self::InputId, DataView = Self> {
         let (b_scan_tx, b_scan_rx) = watch::channel(Vec::new());
         let (m_scan_tx, m_scan_rx) = watch::channel(Vec::new());
+        let (diameter_tx, diameter_rx) = watch::channel(Vec::new());
 
         self.b_scan_segmentation_rx = Some(b_scan_rx);
         self.m_scan_segmentation_rx = Some(m_scan_rx);
+        self.diameter_rx = Some(diameter_rx);
 
         Task {
             m_scan_in: TaskInput::default(),
             b_scan_segmentation_in: TaskInput::default(),
             m_scan_segmentation_in: TaskInput::default(),
+            diameter_in: TaskInput::default(),
             textures_state: self.textures_state.clone(),
             device: self.device.clone(),
             queue: self.queue.clone(),
             bind_group_layout: self.bind_group_layout.clone(),
             b_scan_segmentation_tx: b_scan_tx,
             m_scan_segmentation_tx: m_scan_tx,
+            diameter_tx,
         }
     }
 
@@ -238,6 +273,12 @@ impl DataView for View {
             }
         }
 
+        let diameters = self.diameter_rx.as_ref().map(|rx| rx.borrow());
+        let diameters = diameters.as_deref().and_then(|v| match v.len() {
+            0 => None,
+            _ => Some(&v[..]),
+        });
+
         let layout = Layout {
             main_dir: egui::Direction::RightToLeft,
             cross_justify: true,
@@ -267,6 +308,7 @@ impl DataView for View {
                             texture_bind_group.clone(),
                             b_scan_segmentation.as_slice(),
                             m_scan_segmentation,
+                            diameters,
                             self.map_idx,
                         )
                     }
@@ -466,6 +508,7 @@ fn cartesian_m_scan_ui(
     texture_bind_group: Arc<wgpu::BindGroup>,
     b_scan_segmentation: &[usize],
     m_scan_segmentation: Option<&[usize]>,
+    diameters: Option<&[BScanDiameter]>,
     map_idx: u32,
 ) {
     let (rect, response) = ui.allocate_exact_size(
@@ -521,6 +564,42 @@ fn cartesian_m_scan_ui(
 
         ui.painter()
             .add(Shape::closed_line(points, Stroke::new(2.0, Color32::RED)));
+    }
+
+    if let Some(diameter) = diameters.and_then(|d| d.get(current_b_scan)) {
+        let line_at_rot = |[p1, p2]: [Vector2<f32>; 2], diameter, stroke: Stroke| {
+            let factor = rect.width() / 2.0 / textures_state.a_scan_samples as f32;
+            let center = rect.center();
+            let p1 = center + vec2(-p1.y, -p1.x) * factor;
+            let p2 = center + vec2(-p2.y, -p2.x) * factor;
+            let text_pos = p1.lerp(p2, if p1.y < p2.y { 0.1 } else { 0.9 });
+            if p1.y < p2.y {
+                p1.lerp(p2, 0.1)
+            } else {
+                p2.lerp(p1, 0.1)
+            };
+
+            ui.painter().line_segment([p1, p2], stroke);
+
+            ui.painter().text(
+                text_pos,
+                Align2::LEFT_BOTTOM,
+                format!("{:.2} mm", diameter),
+                FontId::default(),
+                stroke.color,
+            );
+        };
+
+        line_at_rot(
+            diameter.max_points,
+            diameter.max,
+            Stroke::new(2.0, Color32::GREEN),
+        );
+        line_at_rot(
+            diameter.min_points,
+            diameter.min,
+            Stroke::new(2.0, Color32::YELLOW),
+        );
     }
 
     // Draw current_rotation line
@@ -756,6 +835,49 @@ fn find_m_scan_input(pipeline: &Pipeline, node_id: NodeId) -> Option<NodeOutput>
     find_m_scan_input(pipeline, node_id, &mut seen_nodes)
 }
 
+fn find_b_scan_input(pipeline: &Pipeline, node_id: NodeId) -> Option<NodeOutput> {
+    let mut seen_nodes = HashSet::new();
+
+    fn find_b_scan_input(
+        pipeline: &Pipeline,
+        node_id: NodeId,
+        seen_nodes: &mut HashSet<NodeId>,
+    ) -> Option<NodeOutput> {
+        if seen_nodes.contains(&node_id) {
+            return None;
+        }
+
+        seen_nodes.insert(node_id);
+        let node = &pipeline[node_id];
+
+        node.inputs().iter().find_map(|(_, output)| {
+            if let Some(output) = output {
+                if output.type_id == PipelineDataType::BScanSegmentation.into() {
+                    return Some(*output);
+                } else {
+                    return find_b_scan_input(pipeline, output.node_id, seen_nodes);
+                }
+            }
+
+            None
+        })
+    }
+
+    find_b_scan_input(pipeline, node_id, &mut seen_nodes)
+}
+
+fn find_m_scan_segmentation_input(pipeline: &Pipeline, node_id: NodeId) -> Option<NodeOutput> {
+    pipeline[node_id]
+        .inputs()
+        .iter()
+        .find_map(|(input_id, output)| {
+            output.and_then(|o| match (*input_id).into() {
+                diameter::InputId::Lumen => Some(o),
+                _ => None,
+            })
+        })
+}
+
 // MARK: PolarViewPaintCallback
 
 struct PolarViewPaintCallback {
@@ -926,6 +1048,7 @@ struct Task {
     m_scan_in: TaskInput<requests::MScan>,
     b_scan_segmentation_in: TaskInput<requests::BScanSegmentation>,
     m_scan_segmentation_in: TaskInput<requests::MScanSegmentation>,
+    diameter_in: TaskInput<requests::Diameter>,
 
     textures_state: Cached<Option<TexturesState>>,
     device: Arc<wgpu::Device>,
@@ -934,6 +1057,7 @@ struct Task {
 
     b_scan_segmentation_tx: watch::Sender<Vec<usize>>,
     m_scan_segmentation_tx: watch::Sender<Vec<usize>>,
+    diameter_tx: watch::Sender<Vec<BScanDiameter>>,
 }
 
 impl DataViewTask for Task {
@@ -950,6 +1074,7 @@ impl DataViewTask for Task {
             InputId::MScan => self.m_scan_in.connect(input),
             InputId::BScanSegmentation => self.b_scan_segmentation_in.connect(input),
             InputId::MScanSegmentation => self.m_scan_segmentation_in.connect(input),
+            InputId::Diameter => self.diameter_in.connect(input),
         };
     }
 
@@ -958,6 +1083,7 @@ impl DataViewTask for Task {
             InputId::MScan => self.m_scan_in.disconnect(),
             InputId::BScanSegmentation => self.b_scan_segmentation_in.disconnect(),
             InputId::MScanSegmentation => self.m_scan_segmentation_in.disconnect(),
+            InputId::Diameter => self.diameter_in.disconnect(),
         };
     }
 
@@ -965,25 +1091,22 @@ impl DataViewTask for Task {
         fn invalidate_m_scan(slf: &mut Task) {
             *slf.textures_state.write() = None;
         }
-        fn invalidate_b_scan_segmentation(slf: &mut Task) {
-            let _ = slf.b_scan_segmentation_tx.send_modify(|d| {
-                d.clear();
-            });
-        }
-        fn invalidate_m_scan_segmentation(slf: &mut Task) {
-            let _ = slf.m_scan_segmentation_tx.send_modify(|d| {
+        fn invalidate_sender<T>(tx: &watch::Sender<Vec<T>>) {
+            let _ = tx.send_modify(|d| {
                 d.clear();
             });
         }
 
         match cause {
             InvalidationCause::Synced => invalidate_m_scan(self),
-            InvalidationCause::InputInvalidated(input_id) => match input_id.into() {
+            InvalidationCause::InputInvalidated(input_id)
+            | InvalidationCause::Connected(input_id)
+            | InvalidationCause::Disconnected(input_id) => match input_id.into() {
                 InputId::MScan => invalidate_m_scan(self),
-                InputId::BScanSegmentation => invalidate_b_scan_segmentation(self),
-                InputId::MScanSegmentation => invalidate_m_scan_segmentation(self),
+                InputId::BScanSegmentation => invalidate_sender(&self.b_scan_segmentation_tx),
+                InputId::MScanSegmentation => invalidate_sender(&self.m_scan_segmentation_tx),
+                InputId::Diameter => invalidate_sender(&self.diameter_tx),
             },
-            _ => {}
         }
     }
 
@@ -1024,6 +1147,15 @@ impl DataViewTask for Task {
                 }
             } => {
                 self.get_m_scan_segmentation(res).await?;
+            }
+            Some(res) = async {
+                let is_empty = self.diameter_tx.borrow().is_empty();
+                match is_empty {
+                    false => None,
+                    _ => self.diameter_in.request(requests::Diameter).await
+                }
+            } => {
+                self.get_diameter(res).await?;
             }
             _ = future::pending() => {}
         }
@@ -1081,6 +1213,33 @@ impl Task {
 
             self.m_scan_segmentation_tx.send_modify(|d| {
                 d.extend(data.iter().map(|d| *d as usize));
+            });
+        }
+
+        Ok(())
+    }
+
+    async fn get_diameter(
+        &mut self,
+        res: requests::StreamedResponse<BScanDiameter>,
+    ) -> anyhow::Result<()> {
+        let Some(mut rx) = res.subscribe() else {
+            return Ok(());
+        };
+
+        self.diameter_tx.send_modify(|d| {
+            d.clear();
+        });
+
+        loop {
+            let data = match rx.recv().await {
+                Ok(data) => data,
+                Err(RecvError::Closed) => break,
+                _ => return Ok(()),
+            };
+
+            self.diameter_tx.send_modify(|d| {
+                d.push(data);
             });
         }
 

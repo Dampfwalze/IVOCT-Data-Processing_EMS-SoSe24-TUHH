@@ -8,6 +8,8 @@
         "hann",
         "hasher",
         "IVOCT",
+        "lerp",
+        "Matplotlib",
         "mipmap",
         "Multisample",
         "multisampled",
@@ -23,6 +25,7 @@
         "typetag",
         "Unorm",
         "wgpu",
-        "wgsl"
+        "wgsl",
+        "Zeroable"
     ]
 }
