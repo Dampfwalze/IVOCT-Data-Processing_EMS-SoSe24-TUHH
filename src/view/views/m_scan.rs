@@ -1,6 +1,10 @@
 use std::{collections::HashSet, num::NonZeroU32, sync::Arc};
 
-use crate::{cache::Cached, gui::widgets::PanZoomRect, queue_channel::error::RecvError};
+use crate::{
+    cache::Cached,
+    gui::{color_maps, widgets::PanZoomRect},
+    queue_channel::error::RecvError,
+};
 
 use super::prelude::*;
 use egui::{pos2, vec2, Color32, ComboBox, Layout, Rect, Response, Sense, Shape, Stroke, Vec2};
@@ -45,6 +49,7 @@ pub struct View {
     b_scan_segmentation_bind_group_layout: Arc<wgpu::BindGroupLayout>,
 
     show_side_view: bool,
+    map_idx: u32,
 }
 
 impl View {
@@ -62,7 +67,7 @@ impl View {
             textures_state: cache.get((node_output.node_id, node_output.output_id)),
             device: render_state.device.clone(),
             queue: render_state.queue.clone(),
-            bind_group_layout: resources.bind_group_layout.clone(),
+            bind_group_layout: resources.scan_bind_group_layout.clone(),
             m_scan_segmentation_rx: None,
             b_scan_segmentation_rx: None,
             b_scan_segmentation_buffer: None,
@@ -70,6 +75,7 @@ impl View {
                 .b_scan_segmentation_bind_group_layout
                 .clone(),
             show_side_view: false,
+            map_idx: 26,
         }
     }
 }
@@ -91,6 +97,7 @@ impl Clone for View {
                 .b_scan_segmentation_bind_group_layout
                 .clone(),
             show_side_view: self.show_side_view.clone(),
+            map_idx: self.map_idx.clone(),
         }
     }
 }
@@ -100,10 +107,10 @@ impl DataView for View {
 
     fn init_wgpu(
         device: &wgpu::Device,
-        _queue: &wgpu::Queue,
+        queue: &wgpu::Queue,
         target_format: &wgpu::TextureFormat,
     ) -> impl std::any::Any {
-        SharedResources::new(device, target_format)
+        SharedResources::new(device, queue, target_format)
     }
 
     fn from_node_output(
@@ -260,6 +267,7 @@ impl DataView for View {
                             texture_bind_group.clone(),
                             b_scan_segmentation.as_slice(),
                             m_scan_segmentation,
+                            self.map_idx,
                         )
                     }
                 }
@@ -285,6 +293,7 @@ impl DataView for View {
                         bind_group.clone(),
                         b_scan_segmentation,
                         m_scan_segmentation,
+                        self.map_idx,
                     )
                 } else {
                     polar_m_scan_ui(
@@ -293,32 +302,73 @@ impl DataView for View {
                         texture_bind_group.clone(),
                         b_scan_segmentation.as_deref().map(|rx| rx.as_slice()),
                         m_scan_segmentation,
+                        self.map_idx,
                     )
                 }
             })
             .inner;
 
-        // If there is BScanSegmentation input
-        if let Some(true) = self
-            .b_scan_segmentation_rx
-            .as_ref()
-            .map(|rx| rx.borrow().len() > 1)
-        {
-            ui.allocate_ui_at_rect(response.rect.expand(-5.0), |ui| {
-                let mut selected = if self.show_side_view { 1 } else { 0 };
-                ComboBox::from_id_source(ui.id().with("view_selector")).show_index(
-                    ui,
-                    &mut selected,
-                    2,
-                    |i| match i {
-                        0 => "Polar View",
-                        1 => "Side View",
-                        _ => unreachable!(),
-                    },
-                );
-                self.show_side_view = selected == 1;
+        ui.allocate_ui_at_rect(response.rect.expand(-5.0), |ui| {
+            ui.horizontal(|ui| {
+                // If there is BScanSegmentation input
+                if let Some(true) = self
+                    .b_scan_segmentation_rx
+                    .as_ref()
+                    .map(|rx| rx.borrow().len() > 1)
+                {
+                    let mut selected = if self.show_side_view { 1 } else { 0 };
+                    ComboBox::from_id_source(ui.id().with("view_selector")).show_index(
+                        ui,
+                        &mut selected,
+                        2,
+                        |i| match i {
+                            0 => "Polar View",
+                            1 => "Side View",
+                            _ => unreachable!(),
+                        },
+                    );
+                    self.show_side_view = selected == 1;
+                }
+
+                let color_maps = color_maps::get_color_map_names();
+
+                let mut map_idx = 0;
+                let (category, map) = color_maps
+                    .iter()
+                    .find_map(|(category, maps)| {
+                        if self.map_idx < map_idx + maps.len() as u32 {
+                            return Some((category, maps[(self.map_idx - map_idx) as usize]));
+                        } else {
+                            map_idx += maps.len() as u32;
+                            None
+                        }
+                    })
+                    .unwrap();
+
+                ui.menu_button(format!("{category}/{map}"), |ui| {
+                    let mut i = 0;
+                    for (category, maps) in color_maps {
+                        if !ui
+                            .menu_button(*category, |ui| {
+                                for map in *maps {
+                                    if ui.selectable_label(self.map_idx == i, *map).clicked() {
+                                        self.map_idx = i;
+                                        ui.close_menu();
+                                    }
+                                    i += 1;
+                                }
+                            })
+                            .response
+                            .context_menu_opened()
+                        {
+                            i += maps.len() as u32;
+                        }
+                    }
+                })
+                .response
+                .on_hover_text("All color maps from Matplotlib");
             });
-        }
+        });
 
         if textures_state.working {
             ui.ctx().request_repaint();
@@ -332,6 +382,7 @@ fn polar_m_scan_ui(
     texture_bind_group: Arc<wgpu::BindGroup>,
     b_scan_segmentation: Option<&[usize]>,
     m_scan_segmentation: Option<&[usize]>,
+    map_idx: u32,
 ) -> egui::Response {
     PanZoomRect::new()
         .zoom_y(false)
@@ -352,6 +403,7 @@ fn polar_m_scan_ui(
                         texture_count: textures_state.textures.len(),
                         a_scan_count: textures_state.a_scan_count,
                         rect: gpu_viewport,
+                        map_idx,
                     },
                 ));
 
@@ -414,6 +466,7 @@ fn cartesian_m_scan_ui(
     texture_bind_group: Arc<wgpu::BindGroup>,
     b_scan_segmentation: &[usize],
     m_scan_segmentation: Option<&[usize]>,
+    map_idx: u32,
 ) {
     let (rect, response) = ui.allocate_exact_size(
         Vec2::splat(ui.available_height().min(ui.available_width())),
@@ -436,6 +489,7 @@ fn cartesian_m_scan_ui(
                 b_scan_start: b_scan_segmentation[current_b_scan],
                 b_scan_end: b_scan_segmentation[current_b_scan + 1],
                 rect: Rect::from_min_max(Vec2::splat(-1.0).to_pos2(), Vec2::splat(1.0).to_pos2()),
+                map_idx,
             },
         ));
 
@@ -535,6 +589,7 @@ fn side_m_scan_ui(
     b_scan_bind_group: Arc<wgpu::BindGroup>,
     b_scan_segmentation: &[usize],
     m_scan_segmentation: Option<&[usize]>,
+    map_idx: u32,
 ) -> egui::Response {
     let response = ui.allocate_response(ui.available_size(), Sense::hover());
 
@@ -550,6 +605,7 @@ fn side_m_scan_ui(
                 texture_count: textures_state.textures.len(),
                 rect: Rect::from_min_max(Vec2::splat(-1.0).to_pos2(), Vec2::splat(1.0).to_pos2()),
                 view_rotation: current_rotation,
+                map_idx,
             },
         ));
 
@@ -707,6 +763,7 @@ struct PolarViewPaintCallback {
     texture_count: usize,
     a_scan_count: usize,
     rect: Rect,
+    map_idx: u32,
 }
 
 impl eframe::egui_wgpu::CallbackTrait for PolarViewPaintCallback {
@@ -722,11 +779,13 @@ impl eframe::egui_wgpu::CallbackTrait for PolarViewPaintCallback {
         #[repr(C)]
         struct Constants {
             tex_count: u32,
+            map_idx: u32,
             a_scan_count: u32,
         }
 
         render_pass.set_pipeline(&resources.polar_view_pipeline);
         render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
+        render_pass.set_bind_group(1, &resources.color_maps_bind_group, &[]);
         render_pass.set_push_constants(
             wgpu::ShaderStages::VERTEX,
             0,
@@ -742,6 +801,7 @@ impl eframe::egui_wgpu::CallbackTrait for PolarViewPaintCallback {
             16,
             bytemuck::cast_slice(&[Constants {
                 tex_count: self.texture_count.min(MAX_TEXTURES) as u32,
+                map_idx: self.map_idx,
                 a_scan_count: self.a_scan_count as u32,
             }]),
         );
@@ -757,6 +817,7 @@ struct CartesianViewPaintCallback {
     b_scan_start: usize,
     b_scan_end: usize,
     rect: Rect,
+    map_idx: u32,
 }
 
 impl eframe::egui_wgpu::CallbackTrait for CartesianViewPaintCallback {
@@ -772,12 +833,14 @@ impl eframe::egui_wgpu::CallbackTrait for CartesianViewPaintCallback {
         #[repr(C)]
         struct Constants {
             tex_count: u32,
+            map_idx: u32,
             b_scan_start: u32,
             b_scan_end: u32,
         }
 
         render_pass.set_pipeline(&resources.cartesian_view_pipeline);
         render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
+        render_pass.set_bind_group(1, &resources.color_maps_bind_group, &[]);
         render_pass.set_push_constants(
             wgpu::ShaderStages::VERTEX,
             0,
@@ -793,6 +856,7 @@ impl eframe::egui_wgpu::CallbackTrait for CartesianViewPaintCallback {
             16,
             bytemuck::cast_slice(&[Constants {
                 tex_count: self.texture_count.min(MAX_TEXTURES) as u32,
+                map_idx: self.map_idx,
                 b_scan_start: self.b_scan_start as u32,
                 b_scan_end: self.b_scan_end as u32,
             }]),
@@ -809,6 +873,7 @@ struct SideViewPaintCallback {
     texture_count: usize,
     view_rotation: f32,
     rect: Rect,
+    map_idx: u32,
 }
 
 impl eframe::egui_wgpu::CallbackTrait for SideViewPaintCallback {
@@ -824,12 +889,14 @@ impl eframe::egui_wgpu::CallbackTrait for SideViewPaintCallback {
         #[repr(C)]
         struct Constants {
             tex_count: u32,
+            map_idx: u32,
             view_rot: f32,
         }
 
         render_pass.set_pipeline(&resources.side_view_pipeline);
         render_pass.set_bind_group(0, &self.texture_bind_group, &[]);
-        render_pass.set_bind_group(1, &self.b_scan_bind_group, &[]);
+        render_pass.set_bind_group(1, &resources.color_maps_bind_group, &[]);
+        render_pass.set_bind_group(2, &self.b_scan_bind_group, &[]);
         render_pass.set_push_constants(
             wgpu::ShaderStages::VERTEX,
             0,
@@ -845,6 +912,7 @@ impl eframe::egui_wgpu::CallbackTrait for SideViewPaintCallback {
             16,
             bytemuck::cast_slice(&[Constants {
                 tex_count: self.texture_count.min(MAX_TEXTURES) as u32,
+                map_idx: self.map_idx,
                 view_rot: self.view_rotation,
             }]),
         );
@@ -1143,25 +1211,34 @@ struct SharedResources {
     polar_view_pipeline: wgpu::RenderPipeline,
     cartesian_view_pipeline: wgpu::RenderPipeline,
     side_view_pipeline: wgpu::RenderPipeline,
-    bind_group_layout: Arc<wgpu::BindGroupLayout>,
+    scan_bind_group_layout: Arc<wgpu::BindGroupLayout>,
+    color_maps_bind_group: Arc<wgpu::BindGroup>,
     b_scan_segmentation_bind_group_layout: Arc<wgpu::BindGroupLayout>,
 }
 
 impl SharedResources {
-    fn new(device: &wgpu::Device, target_format: &wgpu::TextureFormat) -> Self {
-        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("MScan Bind Group Layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Uint,
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: NonZeroU32::new(MAX_TEXTURES as u32),
-            }],
-        });
+    fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        target_format: &wgpu::TextureFormat,
+    ) -> Self {
+        let (color_maps_bind_group_layout, color_maps_bind_group) =
+            Self::create_color_map_bind_group(device, queue);
+
+        let scan_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("MScan Bind Group Layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Uint,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: NonZeroU32::new(MAX_TEXTURES as u32),
+                }],
+            });
 
         let b_scan_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -1178,24 +1255,34 @@ impl SharedResources {
                 }],
             });
 
-        let polar_view_pipeline =
-            Self::create_polar_view_pipeline(device, target_format, &bind_group_layout);
+        let polar_view_pipeline = Self::create_polar_view_pipeline(
+            device,
+            target_format,
+            &[&scan_bind_group_layout, &color_maps_bind_group_layout],
+        );
 
-        let cartesian_view_pipeline =
-            Self::create_cartesian_view_pipeline(device, target_format, &bind_group_layout);
+        let cartesian_view_pipeline = Self::create_cartesian_view_pipeline(
+            device,
+            target_format,
+            &[&scan_bind_group_layout, &color_maps_bind_group_layout],
+        );
 
         let side_view_pipeline = Self::create_side_view_pipeline(
             device,
             target_format,
-            &bind_group_layout,
-            &b_scan_bind_group_layout,
+            &[
+                &scan_bind_group_layout,
+                &color_maps_bind_group_layout,
+                &b_scan_bind_group_layout,
+            ],
         );
 
         Self {
             polar_view_pipeline,
             cartesian_view_pipeline,
             side_view_pipeline,
-            bind_group_layout: Arc::new(bind_group_layout),
+            scan_bind_group_layout: Arc::new(scan_bind_group_layout),
+            color_maps_bind_group: Arc::new(color_maps_bind_group),
             b_scan_segmentation_bind_group_layout: Arc::new(b_scan_bind_group_layout),
         }
     }
@@ -1203,11 +1290,11 @@ impl SharedResources {
     fn create_polar_view_pipeline(
         device: &wgpu::Device,
         target_format: &wgpu::TextureFormat,
-        bind_group_layout: &wgpu::BindGroupLayout,
+        bind_group_layouts: &[&wgpu::BindGroupLayout],
     ) -> wgpu::RenderPipeline {
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("MScan Polar Pipeline Layout"),
-            bind_group_layouts: &[&bind_group_layout],
+            bind_group_layouts,
             push_constant_ranges: &[
                 PushConstantRange {
                     stages: wgpu::ShaderStages::VERTEX,
@@ -1215,7 +1302,7 @@ impl SharedResources {
                 },
                 PushConstantRange {
                     stages: wgpu::ShaderStages::FRAGMENT,
-                    range: 16..24,
+                    range: 16..28,
                 },
             ],
         });
@@ -1248,11 +1335,11 @@ impl SharedResources {
     fn create_cartesian_view_pipeline(
         device: &wgpu::Device,
         target_format: &wgpu::TextureFormat,
-        bind_group_layout: &wgpu::BindGroupLayout,
+        bind_group_layouts: &[&wgpu::BindGroupLayout],
     ) -> wgpu::RenderPipeline {
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("MScan Cartesian Pipeline Layout"),
-            bind_group_layouts: &[&bind_group_layout],
+            bind_group_layouts,
             push_constant_ranges: &[
                 PushConstantRange {
                     stages: wgpu::ShaderStages::VERTEX,
@@ -1260,7 +1347,7 @@ impl SharedResources {
                 },
                 PushConstantRange {
                     stages: wgpu::ShaderStages::FRAGMENT,
-                    range: 16..28,
+                    range: 16..32,
                 },
             ],
         });
@@ -1293,12 +1380,11 @@ impl SharedResources {
     fn create_side_view_pipeline(
         device: &wgpu::Device,
         target_format: &wgpu::TextureFormat,
-        bind_group_layout: &wgpu::BindGroupLayout,
-        b_scan_bind_group_layout: &wgpu::BindGroupLayout,
+        bind_group_layouts: &[&wgpu::BindGroupLayout],
     ) -> wgpu::RenderPipeline {
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("MScan Polar Pipeline Layout"),
-            bind_group_layouts: &[&bind_group_layout, &b_scan_bind_group_layout],
+            bind_group_layouts,
             push_constant_ranges: &[
                 PushConstantRange {
                     stages: wgpu::ShaderStages::VERTEX,
@@ -1306,7 +1392,7 @@ impl SharedResources {
                 },
                 PushConstantRange {
                     stages: wgpu::ShaderStages::FRAGMENT,
-                    range: 16..24,
+                    range: 16..28,
                 },
             ],
         });
@@ -1334,5 +1420,65 @@ impl SharedResources {
                 ..Default::default()
             },
         })
+    }
+
+    fn create_color_map_bind_group(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> (wgpu::BindGroupLayout, wgpu::BindGroup) {
+        let color_maps_tex = color_maps::upload_color_maps(device, queue);
+
+        let color_maps_view = color_maps_tex.create_view(&wgpu::TextureViewDescriptor::default());
+
+        let color_maps_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("Color Maps Sampler"),
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+
+        let color_maps_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Color Maps Bind Group Layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::StorageTexture {
+                            access: wgpu::StorageTextureAccess::ReadOnly,
+                            format: wgpu::TextureFormat::Rgba8Unorm,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+
+        let color_map_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("Color Maps Bind Group"),
+            layout: &color_maps_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&color_maps_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&color_maps_sampler),
+                },
+            ],
+        });
+
+        (color_maps_bind_group_layout, color_map_bind_group)
     }
 }

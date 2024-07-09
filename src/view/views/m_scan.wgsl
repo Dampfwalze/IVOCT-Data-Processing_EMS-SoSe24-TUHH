@@ -2,6 +2,9 @@
 var m_scan_texture_array: binding_array<texture_2d<u32>>;
 
 @group(1) @binding(0)
+var color_maps: texture_storage_2d<rgba8unorm, read>;
+
+@group(2) @binding(0)
 var<storage, read> b_scan_segments: array<u32>;
 
 struct VertexConstants {
@@ -11,12 +14,14 @@ struct VertexConstants {
 struct PolarConstants {
     _padding: vec4<f32>,
     tex_count: u32,
+    map_idx: u32,
     a_scan_count: u32,
 };
 
 struct CartesianConstants {
     _padding: vec4<f32>,
     tex_count: u32,
+    map_idx: u32,
     b_scan_start: u32,
     b_scan_end: u32,
 };
@@ -24,6 +29,7 @@ struct CartesianConstants {
 struct SideConstants {
     _padding: vec4<f32>,
     tex_count: u32,
+    map_idx: u32,
     view_rot: f32,
 };
 
@@ -81,7 +87,7 @@ fn polar_fs_main(in: VertexOut) -> @location(0) vec4<f32>{
         tex_dim
     );
 
-    return vec4<f32>(vec3<f32>(pixel), 1.0);
+    return sample_color_map(pixel, polar_consts.map_idx);
 }
 
 // Concept:
@@ -118,7 +124,7 @@ fn cartesian_fs_main(in: VertexOut) -> @location(0) vec4<f32>{
         tex_dim
     );
 
-    return vec4<f32>(vec3<f32>(pixel), 1.0);
+    return sample_color_map(pixel, cart_consts.map_idx);
 }
 
 @fragment
@@ -146,7 +152,7 @@ fn side_fs_main(in: VertexOut) -> @location(0) vec4<f32>{
         tex_dim
     );
 
-    return vec4<f32>(vec3<f32>(pixel), 1.0);
+    return sample_color_map(pixel, side_consts.map_idx);
 }
 
 /// Load a sample from the m-scan texture array.
@@ -161,4 +167,21 @@ fn load_m_scan(a_scan_idx: u32, sample_idx: u32, tex_count: u32, tex_dim: vec2<u
     let pixel = textureLoad(m_scan_texture_array[tex_idx], vec2<u32>(sample_idx, tex_column), 0);
 
     return f32(pixel.r) / 65535.0;
+}
+
+fn sample_color_map(value: f32, map_idx: u32) -> vec4<f32> {
+    let dims = textureDimensions(color_maps);
+
+    if (map_idx >= dims.y) {
+        return vec4<f32>(1.0, 0.0, 1.0, 1.0);
+    }
+
+    let col_idx = clamp(value, 0.0, 1.0) * f32(dims.x - 1);
+
+    let lower = textureLoad(color_maps, vec2<u32>(u32(floor(col_idx)), map_idx));
+    let upper = textureLoad(color_maps, vec2<u32>(u32(ceil(col_idx)), map_idx));
+
+    let pixel = mix(lower, upper, fract(col_idx));
+
+    return vec4<f32>(pixel.rgb, 1.0);
 }

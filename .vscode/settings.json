@@ -8,6 +8,7 @@
         "hann",
         "hasher",
         "IVOCT",
+        "mipmap",
         "Multisample",
         "multisampled",
         "multiview",
@@ -20,6 +21,7 @@
         "rustfmt",
         "thiserror",
         "typetag",
+        "Unorm",
         "wgpu",
         "wgsl"
     ]
