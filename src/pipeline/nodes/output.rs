@@ -7,7 +7,10 @@ use tokio::{
     sync::{watch, Notify},
 };
 
-use crate::{pipeline::types::DataType, queue_channel::error::RecvError};
+use crate::{
+    pipeline::types::{DataType, LumenVertex},
+    queue_channel::error::RecvError,
+};
 
 use super::prelude::*;
 
@@ -95,6 +98,7 @@ impl PipelineNode for Node {
                     TaskInputType::MScanSegmentation(TaskInput::default())
                 }
                 PipelineDataType::Diameter => TaskInputType::Diameter(TaskInput::default()),
+                PipelineDataType::Mesh => TaskInputType::Mesh(TaskInput::default()),
             },
         });
     }
@@ -110,6 +114,7 @@ enum TaskInputType {
     BScanSegmentation(TaskInput<requests::BScanSegmentation>),
     MScanSegmentation(TaskInput<requests::MScanSegmentation>),
     Diameter(TaskInput<requests::Diameter>),
+    Mesh(TaskInput<requests::Mesh>),
 }
 
 impl TaskInputType {
@@ -121,6 +126,7 @@ impl TaskInputType {
             TaskInputType::BScanSegmentation(input) => input.disconnect(),
             TaskInputType::MScanSegmentation(input) => input.disconnect(),
             TaskInputType::Diameter(input) => input.disconnect(),
+            TaskInputType::Mesh(input) => input.disconnect(),
         }
     }
 }
@@ -187,6 +193,13 @@ impl NodeTask for Task {
                     let mut task_input = TaskInput::<requests::Diameter>::default();
                     if task_input.connect(input) {
                         resulting = Some(TaskInputType::Diameter(task_input));
+                        break;
+                    }
+                }
+                PipelineDataType::Mesh => {
+                    let mut task_input = TaskInput::<requests::Mesh>::default();
+                    if task_input.connect(input) {
+                        resulting = Some(TaskInputType::Mesh(task_input));
                         break;
                     }
                 }
@@ -371,6 +384,63 @@ impl NodeTask for Task {
                 }
 
                 file.write_all(output.as_bytes()).await?;
+
+                let _ = self.progress_tx.send(Progress::Idle);
+            }
+            TaskInputType::Mesh(mesh) => {
+                // Save in OBJ format
+                let mut file = fs::File::create(&self.path).await?;
+
+                let Some(res) = mesh.request(requests::Mesh).await else {
+                    return Ok(());
+                };
+
+                let Some(mut rx) = res.subscribe() else {
+                    return Err(anyhow!("Failed to subscribe to Mesh"));
+                };
+
+                let _ = self.progress_tx.send(Progress::Working(None));
+
+                file.write_all(b"o Lumen\n").await?;
+
+                let mut mesh_number = 0;
+
+                loop {
+                    let mesh = match rx.recv().await {
+                        Err(RecvError::Closed) => break,
+                        Err(e) => Err(e)?,
+                        Ok(mesh) => mesh,
+                    };
+
+                    let mut output = String::new();
+
+                    for LumenVertex {
+                        position: pos,
+                        normal,
+                    } in mesh.vertices.iter()
+                    {
+                        output += &format!(
+                            "v {} {} {}\nvn {} {} {}\n",
+                            pos.x, pos.y, pos.z, normal.x, normal.y, normal.z
+                        );
+                    }
+
+                    for face in mesh.indices.chunks_exact(3) {
+                        let face = [
+                            face[0] + mesh_number + 1,
+                            face[1] + mesh_number + 1,
+                            face[2] + mesh_number + 1,
+                        ];
+                        output += &format!(
+                            "f {}//{} {}//{} {}//{}\n",
+                            face[0], face[0], face[1], face[1], face[2], face[2]
+                        );
+                    }
+
+                    file.write_all(output.as_bytes()).await?;
+
+                    mesh_number += mesh.vertices.len() as u32;
+                }
 
                 let _ = self.progress_tx.send(Progress::Idle);
             }

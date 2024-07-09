@@ -29,6 +29,9 @@ pub struct MScanSegmentation;
 #[derive(Debug, Clone, Copy)]
 pub struct Diameter;
 
+#[derive(Debug, Clone, Copy)]
+pub struct Mesh;
+
 //MARK: Implementations
 
 impl Request for RawMScan {
@@ -72,6 +75,14 @@ impl Request for MScanSegmentation {
 
 impl Request for Diameter {
     type Response = StreamedResponse<types::BScanDiameter>;
+
+    fn is_response_valid(&self, response: &Self::Response) -> bool {
+        !response.is_lagged()
+    }
+}
+
+impl Request for Mesh {
+    type Response = StreamedResponse<types::LumenMesh>;
 
     fn is_response_valid(&self, response: &Self::Response) -> bool {
         !response.is_lagged()

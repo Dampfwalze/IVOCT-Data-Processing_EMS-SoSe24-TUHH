@@ -274,6 +274,17 @@ impl NodeTask for Task {
 
                     interpolate_lumen(&mut shared.lumen_from_start, &mut shared.interpolated_til);
 
+                    let count = shared
+                        .lumen_from_start
+                        .iter()
+                        .take(shared.interpolated_til)
+                        .copied()
+                        .filter(|&v| v == u32::MAX)
+                        .count();
+                    if count > 0 {
+                        println!("{} interpolated", count);
+                    }
+
                     end_height
                 }
             })
@@ -460,10 +471,10 @@ fn interpolate_lumen(lumen: &mut Vec<u32>, til: &mut usize) {
                     lumen[i + k] = (start as i32 + diff * k as i32 / len as i32) as u32;
                 }
 
-                i = j + 1;
+                i = j;
             } else {
                 *til = i;
-                break;
+                return;
             }
         } else {
             i += 1;

@@ -5,6 +5,7 @@
         "eframe",
         "egui",
         "emath",
+        "fract",
         "hann",
         "hasher",
         "IVOCT",

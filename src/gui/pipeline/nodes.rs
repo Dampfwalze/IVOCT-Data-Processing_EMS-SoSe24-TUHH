@@ -3,6 +3,7 @@ pub mod diameter;
 pub mod filter;
 pub mod follow_catheter;
 pub mod follow_lumen;
+pub mod generate_mesh;
 pub mod output;
 pub mod process_raw_m_scan;
 pub mod remove_detector_defect;
@@ -64,6 +65,7 @@ impl PipelineDataType {
             PipelineDataType::BScanSegmentation => Color32::from_rgb(0, 128, 255),
             PipelineDataType::MScanSegmentation => Color32::from_rgb(128, 0, 128),
             PipelineDataType::Diameter => Color32::from_rgb(128, 128, 0),
+            PipelineDataType::Mesh => Color32::from_rgb(0, 128, 0),
         }
     }
 }
@@ -77,6 +79,7 @@ impl fmt::Display for PipelineDataType {
             PipelineDataType::BScanSegmentation => write!(f, "B-scan segmentation"),
             PipelineDataType::MScanSegmentation => write!(f, "M-scan segmentation"),
             PipelineDataType::Diameter => write!(f, "Diameter"),
+            PipelineDataType::Mesh => write!(f, "Mesh"),
         }
     }
 }

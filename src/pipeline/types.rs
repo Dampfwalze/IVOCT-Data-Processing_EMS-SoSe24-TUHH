@@ -1,9 +1,21 @@
 use std::mem;
 
-use nalgebra::{DMatrix, DMatrixView, DVector, Scalar, Vector2};
+use nalgebra::{DMatrix, DMatrixView, DVector, Scalar, Vector2, Vector3};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use simba::scalar::SubsetOf;
+
+#[derive(Debug, Clone)]
+pub struct LumenMesh {
+    pub vertices: Vec<LumenVertex>,
+    pub indices: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LumenVertex {
+    pub position: Vector3<f32>,
+    pub normal: Vector3<f32>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct BScanDiameter {

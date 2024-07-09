@@ -3,6 +3,7 @@ pub mod diameter;
 pub mod filter;
 pub mod follow_catheter;
 pub mod follow_lumen;
+pub mod generate_mesh;
 pub mod output;
 pub mod process_raw_m_scan;
 pub mod remove_detector_defect;
