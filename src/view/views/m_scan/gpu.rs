@@ -311,7 +311,6 @@ impl SharedResources {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("MScan Polar Render Pipeline"),
             layout: Some(&pipeline_layout),
-            depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             vertex: wgpu::VertexState {
                 module: shader,
@@ -322,6 +321,13 @@ impl SharedResources {
                 module: shader,
                 entry_point: "polar_fs_main",
                 targets: &[Some((*target_format).into())],
+            }),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth24Plus,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
             }),
             multiview: None,
             primitive: wgpu::PrimitiveState {
@@ -355,7 +361,6 @@ impl SharedResources {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("MScan Cartesian Render Pipeline"),
             layout: Some(&pipeline_layout),
-            depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             vertex: wgpu::VertexState {
                 module: shader,
@@ -366,6 +371,13 @@ impl SharedResources {
                 module: shader,
                 entry_point: "cartesian_fs_main",
                 targets: &[Some((*target_format).into())],
+            }),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth24Plus,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
             }),
             multiview: None,
             primitive: wgpu::PrimitiveState {
@@ -399,7 +411,6 @@ impl SharedResources {
         device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("MScan Polar Render Pipeline"),
             layout: Some(&pipeline_layout),
-            depth_stencil: None,
             multisample: wgpu::MultisampleState::default(),
             vertex: wgpu::VertexState {
                 module: shader,
@@ -410,6 +421,13 @@ impl SharedResources {
                 module: shader,
                 entry_point: "side_fs_main",
                 targets: &[Some((*target_format).into())],
+            }),
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth24Plus,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
             }),
             multiview: None,
             primitive: wgpu::PrimitiveState {
