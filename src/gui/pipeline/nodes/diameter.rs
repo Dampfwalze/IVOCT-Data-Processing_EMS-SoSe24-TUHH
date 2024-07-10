@@ -50,11 +50,11 @@ impl EditNode for Node {
         );
 
         ui.input(
-            InputId::BScans,
-            self.b_scans.connection(),
-            PipelineDataType::BScanSegmentation.color(),
+            InputId::Lumen,
+            self.lumen.connection(),
+            PipelineDataType::MScanSegmentation.color(),
             |ui| {
-                ui.node_label("B-Scans");
+                ui.node_label("Lumen");
             },
         );
 
@@ -68,11 +68,11 @@ impl EditNode for Node {
         );
 
         ui.input(
-            InputId::Lumen,
-            self.lumen.connection(),
-            PipelineDataType::MScanSegmentation.color(),
+            InputId::BScans,
+            self.b_scans.connection(),
+            PipelineDataType::BScanSegmentation.color(),
             |ui| {
-                ui.node_label("Lumen");
+                ui.node_label("B-Scans");
             },
         );
 
