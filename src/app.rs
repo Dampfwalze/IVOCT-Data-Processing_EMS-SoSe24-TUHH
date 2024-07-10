@@ -55,6 +55,7 @@ impl IVOCTTestApp {
             )
             .with_view::<views::data_vector::View>()
             .with_view::<views::m_scan::View>()
+            .with_view::<views::mesh::View>()
             .build(),
             data_views_executor: ViewsExecutor::new(),
             dock_state: DockState::new(),

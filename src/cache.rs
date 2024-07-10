@@ -108,6 +108,14 @@ impl<T> Clone for Cached<T> {
     }
 }
 
+impl<T: fmt::Debug + Send + Sync + 'static> fmt::Debug for Cached<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Cached")
+            .field("value", &*self.read())
+            .finish()
+    }
+}
+
 // MARK: _Shared
 
 impl _Shared {

@@ -20,6 +20,7 @@ async fn main() {
         eframe::NativeOptions {
             renderer: eframe::Renderer::Wgpu,
             hardware_acceleration: eframe::HardwareAcceleration::Preferred,
+            depth_buffer: 24,
             wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
                 supported_backends: wgpu::Backends::PRIMARY,
                 power_preference: wgpu::PowerPreference::HighPerformance,
@@ -33,7 +34,7 @@ async fn main() {
                     required_limits: wgpu::Limits {
                         max_texture_dimension_2d: 12000,
                         max_sampled_textures_per_shader_stage: view::views::m_scan::MAX_TEXTURES as _,
-                        max_push_constant_size: 32,
+                        max_push_constant_size: 64,
                         ..Default::default()
                     },
                 }),

@@ -79,6 +79,7 @@ impl EditNode for Node {
         ui.add(
             DragValue::new(&mut self.settings.pullback_speed)
                 .clamp_range(0.0..=f32::INFINITY)
+                .speed(0.01)
                 .prefix("Pullback Speed: ")
                 .suffix(" mm/s"),
         );
@@ -86,6 +87,7 @@ impl EditNode for Node {
         ui.add(
             DragValue::new(&mut self.settings.mm_per_pixel)
                 .clamp_range(0.0..=f32::INFINITY)
+                .speed(0.001)
                 .prefix("mm per pixel: ")
                 .suffix(" mm"),
         );
@@ -93,6 +95,7 @@ impl EditNode for Node {
         ui.add(
             DragValue::new(&mut self.settings.refraction_index)
                 .clamp_range(0.0..=f32::INFINITY)
+                .speed(0.01)
                 .prefix("Refraction Index: "),
         );
     }

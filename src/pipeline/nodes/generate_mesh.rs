@@ -250,8 +250,8 @@ fn generate_mesh(
     let left_lumen = &lumen[b_scan_prev..b_scan];
     let right_lumen = &lumen[b_scan..b_scan_next];
 
-    let mut vertices = Vec::<LumenVertex>::new();
-    let mut indices = Vec::new();
+    let mut vertices = Vec::<LumenVertex>::with_capacity((st.rotational_samples as usize + 1) * 2);
+    let mut indices = Vec::with_capacity((st.rotational_samples as usize + 1) * 6);
 
     let width = st.pullback_speed / st.rotation_frequency;
 
@@ -267,13 +267,21 @@ fn generate_mesh(
 
         let current_idx = vertices.len() as u32;
 
+        let dir = Vector3::new(rot.cos(), rot.sin(), 0.0);
+
+        let p_left = dir * left + Vector3::new(0.0, 0.0, start_z);
+        let p_right = dir * right + Vector3::new(0.0, 0.0, start_z + width);
+
+        let diff = p_right - p_left;
+        let normal = diff.cross(&Vector3::new(-dir.y, dir.x, 0.0)).normalize();
+
         vertices.push(LumenVertex {
-            position: Vector3::new(rot.cos() * left, rot.sin() * left, start_z),
-            normal: Vector3::new(-rot.sin(), rot.cos(), 0.0),
+            position: p_left,
+            normal,
         });
         vertices.push(LumenVertex {
-            position: Vector3::new(rot.cos() * right, rot.sin() * right, start_z + width),
-            normal: Vector3::new(-rot.sin(), rot.cos(), 0.0),
+            position: p_right,
+            normal,
         });
 
         indices.extend([
@@ -287,8 +295,7 @@ fn generate_mesh(
             current_idx + 3,
         ]);
     }
-    indices.remove(indices.len() - 1);
-    indices.remove(indices.len() - 1);
+    indices.resize(indices.len() - 6, 0);
 
     LumenMesh { vertices, indices }
 }
