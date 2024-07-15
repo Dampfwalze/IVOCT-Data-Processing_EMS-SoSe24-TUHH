@@ -6,7 +6,7 @@ pub struct PanZoom {
 }
 
 impl PanZoom {
-pub fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             max_zoom: f32::INFINITY,
             min_zoom: 0.0,
@@ -83,7 +83,11 @@ pub fn new() -> Self {
             .allocate_ui_at_rect(rect, |ui| {
                 ui.with_layer_id(layer_id, |ui| {
                     ui.set_clip_rect(transform.inverse() * rect);
-                    ui.set_enabled(enable_ui);
+
+                    if !enable_ui {
+                        ui.disable();
+                    }
+
                     add_content(ui, &mut transform)
                 })
                 .inner

@@ -69,7 +69,7 @@ impl EditNode for Node {
         ui.add(
             DragValue::new(&mut self.settings.threshold)
                 .speed(0.01)
-                .clamp_range(0.0..=1.0)
+                .range(0.0..=1.0)
                 .prefix("Threshold: "),
         );
 
@@ -79,7 +79,7 @@ impl EditNode for Node {
             ui.add(
                 DragValue::new(&mut self.settings.artifact_threshold)
                     .speed(0.01)
-                    .clamp_range(0.0..=1.0)
+                    .range(0.0..=1.0)
                     .prefix("Artifact Threshold: "),
             );
         }

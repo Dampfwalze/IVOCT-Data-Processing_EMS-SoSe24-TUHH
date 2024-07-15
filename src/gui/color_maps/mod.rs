@@ -1,5 +1,5 @@
 use nalgebra::DMatrix;
-use wgpu::{util::DeviceExt, TextureFormat};
+use wgpu::util::DeviceExt;
 
 macro_rules! import_color_maps {
     ( $( ($category:expr, [ $( $name:expr ),* ]) ),* ) => {

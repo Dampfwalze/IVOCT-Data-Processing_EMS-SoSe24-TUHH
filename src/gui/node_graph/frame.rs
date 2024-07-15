@@ -143,7 +143,7 @@ impl<'a> NodeFrame<'a> {
             inner: title_size,
             ..
         } = ui.allocate_ui_at_rect(rect, |ui| {
-            let res = ui.allocate_ui_at_rect(padding.shrink_rect(ui.max_rect()), |ui| {
+            let res = ui.allocate_ui_at_rect(ui.max_rect() - padding, |ui| {
                 ui.with_layout(ui.layout().clone().with_cross_justify(true), |ui| {
                     // Draw text not as label to make it non interactive
                     let galley =
@@ -167,6 +167,7 @@ impl<'a> NodeFrame<'a> {
                         self.id.with("content"),
                         ui.available_rect_before_wrap(),
                         ui.clip_rect(),
+                        egui::UiStackInfo::default(),
                     );
                     _ui.with_layout(*ui.layout(), add_contents);
                     ui.allocate_rect(_ui.min_rect(), Sense::hover());
@@ -188,7 +189,7 @@ impl<'a> NodeFrame<'a> {
         });
 
         ui.painter()
-            .set(shadow_op, Shape::Mesh(shadow.tessellate(rect, rounding)));
+            .set(shadow_op, Shape::from(shadow.as_shape(rect, rounding)));
 
         ui.painter().set(
             bg_op,

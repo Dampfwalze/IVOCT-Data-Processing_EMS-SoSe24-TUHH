@@ -450,22 +450,22 @@ impl NodeTask for Task {
                     },
                     FilterType::BWAreaOpen => match m_scan.as_ref() {
                         DataMatrix::U8(matrix) => {
-                            b_warea_open_par(matrix.as_view(), &b_ware_open_settings).into()
+                            bw_area_open_par(matrix.as_view(), &b_ware_open_settings).into()
                         }
                         DataMatrix::U16(matrix) => {
-                            b_warea_open_par(matrix.as_view(), &b_ware_open_settings).into()
+                            bw_area_open_par(matrix.as_view(), &b_ware_open_settings).into()
                         }
                         DataMatrix::U32(matrix) => {
-                            b_warea_open_par(matrix.as_view(), &b_ware_open_settings).into()
+                            bw_area_open_par(matrix.as_view(), &b_ware_open_settings).into()
                         }
                         DataMatrix::U64(matrix) => {
-                            b_warea_open_par(matrix.as_view(), &b_ware_open_settings).into()
+                            bw_area_open_par(matrix.as_view(), &b_ware_open_settings).into()
                         }
                         DataMatrix::F32(matrix) => {
-                            b_warea_open_par(matrix.as_view(), &b_ware_open_settings).into()
+                            bw_area_open_par(matrix.as_view(), &b_ware_open_settings).into()
                         }
                         DataMatrix::F64(matrix) => {
-                            b_warea_open_par(matrix.as_view(), &b_ware_open_settings).into()
+                            bw_area_open_par(matrix.as_view(), &b_ware_open_settings).into()
                         }
                     },
                 })
@@ -826,7 +826,7 @@ where
 
 // MARK: BWareOpen
 
-fn b_warea_open_par<T>(matrix: DMatrixView<T>, settings: &BWareOpenSettings) -> DMatrix<T>
+fn bw_area_open_par<T>(matrix: DMatrixView<T>, settings: &BWareOpenSettings) -> DMatrix<T>
 where
     T: Scalar + Zero + PartialOrd + Send + Sync + Copy + 'static,
 {

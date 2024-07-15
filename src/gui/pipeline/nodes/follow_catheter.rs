@@ -72,7 +72,7 @@ impl EditNode for Node {
         ui.add(
             DragValue::new(&mut self.settings.threshold)
                 .speed(0.02)
-                .clamp_range(0.0..=2.0)
+                .range(0.0..=2.0)
                 .prefix("Seg Threshold: "),
         );
     }

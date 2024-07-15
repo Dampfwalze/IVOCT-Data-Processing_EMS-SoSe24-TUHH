@@ -1,6 +1,6 @@
 use core::fmt;
 
-use egui::{DragValue, ProgressBar};
+use egui::{ComboBox, DragValue, ProgressBar};
 
 use super::prelude::*;
 
@@ -59,7 +59,7 @@ impl EditNode for Node {
             },
         );
 
-        NodeComboBox::from_id_source(ui.id().with("input_type"))
+        ComboBox::from_id_source(ui.id().with("input_type"))
             .selected_text(format!("{}", self.input_type))
             .show_ui(ui, |ui| {
                 for input_type in OutputId::VALUES {
@@ -71,7 +71,7 @@ impl EditNode for Node {
                 }
             });
 
-        NodeComboBox::from_id_source(ui.id().with("data_type"))
+        ComboBox::from_id_source(ui.id().with("data_type"))
             .selected_text(format!("{}", self.data_type))
             .show_ui(ui, |ui| {
                 for data_type in DataType::VALUES.into_iter() {
@@ -86,7 +86,7 @@ impl EditNode for Node {
                 DragValue::new(&mut self.a_scan_length)
                     .speed(1)
                     .prefix("A Scan Length: ")
-                    .clamp_range(1..=usize::MAX),
+                    .range(1..=usize::MAX),
             );
         }
 

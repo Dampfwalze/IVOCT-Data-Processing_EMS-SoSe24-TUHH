@@ -1,4 +1,4 @@
-use egui::{Color32, ProgressBar};
+use egui::{Color32, ComboBox, ProgressBar};
 
 use crate::{
     gui::widgets::PathInputAction,
@@ -45,7 +45,7 @@ impl EditNode for Node {
         );
 
         if let PipelineDataType::RawMScan | PipelineDataType::MScan = self.input_type {
-            NodeComboBox::from_id_source(ui.id().with("input_type"))
+            ComboBox::from_id_source(ui.id().with("input_type"))
                 .selected_text(format!("{}", self.scan_data_type))
                 .show_ui(ui, |ui| {
                     for scan_data_type in DataType::VALUES {

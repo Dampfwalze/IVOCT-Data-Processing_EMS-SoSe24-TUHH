@@ -1,7 +1,7 @@
 use core::fmt;
 use std::ops::DerefMut;
 
-use egui::{Color32, DragValue, ProgressBar};
+use egui::{Color32, ComboBox, DragValue, ProgressBar};
 
 use crate::{
     gui::widgets::DragVector,
@@ -82,7 +82,7 @@ impl EditNode for Node {
             },
         );
 
-        NodeComboBox::from_id_source(ui.id().with("filter_type"))
+        ComboBox::from_id_source(ui.id().with("filter_type"))
             .selected_text(format!("{}", self.filter_type))
             .show_ui(ui, |ui| {
                 for filter_type in FilterType::VALUES {
@@ -99,7 +99,7 @@ impl EditNode for Node {
                 ui.add(
                     DragValue::new(&mut self.gauss_settings.sigma)
                         .speed(0.1)
-                        .clamp_range(0.1..=50.0)
+                        .range(0.1..=50.0)
                         .prefix("Sigma: "),
                 );
 
@@ -108,7 +108,7 @@ impl EditNode for Node {
                 ui.node_label("Kernel Size");
                 ui.add(
                     DragVector::new([&mut kernel_size.x, &mut kernel_size.y])
-                        .clamp_range(1..=100)
+                        .range(1..=100)
                         .prefix(["Rows: ", "Columns: "]),
                 );
             }
@@ -118,7 +118,7 @@ impl EditNode for Node {
                 ui.node_label("Kernel Size");
                 ui.add(
                     DragVector::new([&mut size.x, &mut size.y])
-                        .clamp_range(1..=100)
+                        .range(1..=100)
                         .prefix(["Rows: ", "Columns: "]),
                 );
             }
@@ -129,7 +129,7 @@ impl EditNode for Node {
                 ui.node_label("Neighborhood Size");
                 ui.add(
                     DragVector::new([&mut size.x, &mut size.y])
-                        .clamp_range(1..=100)
+                        .range(1..=100)
                         .prefix(["Rows: ", "Columns: "]),
                 );
             }
@@ -137,25 +137,25 @@ impl EditNode for Node {
                 ui.add(
                     DragValue::new(&mut self.prewitt_settings.threshold)
                         .speed(0.01)
-                        .clamp_range(0.0..=1.0)
+                        .range(0.0..=1.0)
                         .prefix("Threshold: "),
                 );
             }
             FilterType::WidenStructures => {
                 ui.add(
                     DragValue::new(&mut self.widen_structures_settings.width)
-                        .clamp_range(0..=300)
+                        .range(0..=300)
                         .prefix("Size: "),
                 );
             }
             FilterType::BWAreaOpen => {
                 ui.add(
                     DragValue::new(&mut self.b_w_area_open_settings.area)
-                        .clamp_range(0..=1000)
+                        .range(0..=1000)
                         .prefix("Area Size: "),
                 );
 
-                NodeComboBox::from_id_source(ui.id().with("conn_type"))
+                ComboBox::from_id_source(ui.id().with("conn_type"))
                     .selected_text(format!("{}", self.b_w_area_open_settings.connection_type))
                     .show_ui(ui, |ui| {
                         for conn_type in AreaConnectionType::VALUES {

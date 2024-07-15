@@ -316,11 +316,13 @@ impl SharedResources {
                 module: shader,
                 entry_point: "vs_main",
                 buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: shader,
                 entry_point: "polar_fs_main",
                 targets: &[Some((*target_format).into())],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth24Plus,
@@ -366,11 +368,13 @@ impl SharedResources {
                 module: shader,
                 entry_point: "vs_main",
                 buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: shader,
                 entry_point: "cartesian_fs_main",
                 targets: &[Some((*target_format).into())],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth24Plus,
@@ -416,11 +420,13 @@ impl SharedResources {
                 module: shader,
                 entry_point: "vs_main",
                 buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: shader,
                 entry_point: "side_fs_main",
                 targets: &[Some((*target_format).into())],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             depth_stencil: Some(wgpu::DepthStencilState {
                 format: wgpu::TextureFormat::Depth24Plus,

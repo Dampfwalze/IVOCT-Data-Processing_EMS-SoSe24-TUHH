@@ -39,10 +39,7 @@ mod prelude {
     }
 
     pub(super) mod widgets {
-        pub use crate::gui::{
-            node_graph::UiNodeExt,
-            widgets::{NodeComboBox, PathInput},
-        };
+        pub use crate::gui::{node_graph::UiNodeExt, widgets::PathInput};
     }
 }
 

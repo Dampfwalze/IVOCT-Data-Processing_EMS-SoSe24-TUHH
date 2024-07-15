@@ -45,10 +45,23 @@ impl<'a, const D: usize> DragVector<'a, D> {
         self.map(|v| v.speed(speed))
     }
 
-    /// Clamp incoming and outgoing values to this range.
+    /// Sets valid range for dragging the value.
+    ///
+    /// By default all values are clamped to this range, even when not interacted with.
+    /// You can change this behavior by passing `false` to [`Slider::clamp_to_range`].
     #[inline]
-    pub fn clamp_range<Num: emath::Numeric>(mut self, clamp_range: RangeInclusive<Num>) -> Self {
-        self.map(|v| v.clamp_range(clamp_range.clone()))
+    pub fn range<Num: emath::Numeric>(mut self, clamp_range: RangeInclusive<Num>) -> Self {
+        self.map(|v| v.range(clamp_range.clone()))
+    }
+
+    /// If set to `true`, all incoming and outgoing values will be clamped to the sliding [`Self::range`] (if any).
+    ///
+    /// If set to `false`, a value outside of the range that is set programmatically or by user input will not be changed.
+    /// Dragging will be restricted to the range regardless of this setting.
+    /// Default: `true`.
+    #[inline]
+    pub fn clamp_to_range(mut self, clamp_to_range: bool) -> Self {
+        self.map(|v| v.clamp_to_range(clamp_to_range))
     }
 
     /// Show a prefix before the number, e.g. "x: "

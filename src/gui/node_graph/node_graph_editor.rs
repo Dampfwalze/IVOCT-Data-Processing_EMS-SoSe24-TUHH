@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use egui::{
-    Color32, DragAndDrop, InnerResponse, Key, PointerButton, Pos2, Rect, Response, Sense, Shape,
-    Stroke, Vec2,
+    epaint::PathStroke, Color32, DragAndDrop, InnerResponse, Key, PointerButton, Pos2, Rect,
+    Response, Sense, Shape, Stroke, Vec2,
 };
 
 use crate::gui::widgets::PanZoom;
@@ -301,7 +301,7 @@ impl<'a> NodeGraphEditor<'a> {
                 .iter()
                 .map(|(input_pos, output_pos, _, _)| Shape::LineSegment {
                     points: [*input_pos, *output_pos],
-                    stroke: Stroke::new(line_with, Color32::WHITE),
+                    stroke: PathStroke::new(line_with, Color32::WHITE),
                 })
                 .collect::<Vec<_>>();
 

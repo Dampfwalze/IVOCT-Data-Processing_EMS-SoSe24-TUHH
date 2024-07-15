@@ -72,13 +72,13 @@ impl EditNode for Node {
 
         ui.add(
             DragValue::new(&mut self.factor)
-                .clamp_range(1.0..=f64::INFINITY)
+                .range(1.0..=f64::INFINITY)
                 .prefix("Factor: "),
         );
 
         ui.add(
             DragValue::new(&mut self.rescale_cutoff)
-                .clamp_range(1..=usize::MAX)
+                .range(1..=usize::MAX)
                 .prefix("Rescale Cutoff: "),
         );
 

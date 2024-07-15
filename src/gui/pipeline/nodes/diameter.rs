@@ -78,14 +78,14 @@ impl EditNode for Node {
 
         ui.add(
             DragValue::new(&mut self.settings.mm_per_pixel)
-                .clamp_range(0.0..=f32::INFINITY)
+                .range(0.0..=f32::INFINITY)
                 .speed(0.001)
                 .prefix("mm per pixel: "),
         );
 
         ui.add(
             DragValue::new(&mut self.settings.refraction_index)
-                .clamp_range(0.0..=f32::INFINITY)
+                .range(0.0..=f32::INFINITY)
                 .speed(0.01)
                 .prefix("refraction index: "),
         );
@@ -101,7 +101,7 @@ impl EditNode for Node {
             ui.add_enabled(
                 self.settings.use_catheter_diameter,
                 DragValue::new(&mut self.settings.catheter_diameter)
-                    .clamp_range(0.0..=f32::INFINITY)
+                    .range(0.0..=f32::INFINITY)
                     .speed(0.01)
                     .suffix(" mm"),
             );

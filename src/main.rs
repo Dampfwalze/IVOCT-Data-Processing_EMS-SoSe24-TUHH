@@ -48,7 +48,7 @@ async fn main() {
                 ..egui::Style::default()
             });
 
-            Box::new(IVOCTTestApp::new(cc))
+            Ok(Box::new(IVOCTTestApp::new(cc)))
         }),
     )
     .unwrap();
