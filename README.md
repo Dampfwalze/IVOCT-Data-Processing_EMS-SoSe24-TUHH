@@ -1,5 +1,9 @@
 # Node graph based IVOCT data processing application in Rust
 
+## Try out this application
+
+If you want to get familiar with this application, see this [application tutorial](doc/tutorial.md).
+
 ## How to run
 
 ### 1. Install Rust
@@ -21,6 +25,10 @@ may need to restart your terminal to have the changes take effect.
 ```
 …\ems_sose24_ivoct_testing> code .
 ```
+
+##### Install Rust extension
+
+- [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
 
 ### 3. Compile and run
 
