@@ -291,8 +291,8 @@ where
     start + index
 }
 
-/// Calculates the euclidean distance between the scans in the reference area
-/// and the specified area and calculates their mean.
+/// Calculates the euclidean distance squared between the scans in the
+/// reference area and the specified area and calculates their mean.
 fn calculate_distance_sq_of_neighborhood<T>(
     m_scan: DMatrixView<T>,
     range: impl Iterator<Item = usize>,
