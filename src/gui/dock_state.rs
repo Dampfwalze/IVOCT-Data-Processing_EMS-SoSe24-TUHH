@@ -13,6 +13,8 @@ pub enum TabType {
     DataView(ViewId),
 }
 
+/// Wrapper around [egui_dock::DockState], adding additional functionality
+/// important for this application.
 pub struct DockState(egui_dock::DockState<TabType>);
 
 impl DockState {
@@ -20,11 +22,13 @@ impl DockState {
         Self(egui_dock::DockState::new(vec![TabType::Pipeline]))
     }
 
+    /// Finds a fitting dock node and appends a data view tab.
     pub fn add_view_tab(&mut self, view_id: ViewId) -> bool {
-        if self.iter_all_tabs().any(|(_, tab)| match tab {
-            TabType::DataView(id) => *id == view_id,
-            _ => false,
-        }) {
+        if self
+            .iter_all_tabs()
+            .any(|(_, tab)| matches!(tab, TabType::DataView(id) if *id == view_id))
+        {
+            // Tab for view_id already exists
             return false;
         }
 

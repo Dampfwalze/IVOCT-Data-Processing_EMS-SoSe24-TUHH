@@ -4,6 +4,10 @@
 
 If you want to get familiar with this application, see this [application tutorial](doc/tutorial.md).
 
+## Technical details
+
+See the [Technical Overview](/doc/technical_overview.md).
+
 ## How to run
 
 ### 1. Install Rust

@@ -17,29 +17,45 @@ use crate::{
 };
 
 pub struct IVOCTTestApp {
+    /// High level pipeline description.
     pipeline: pipeline::Pipeline,
+    /// Editing specific information (Where are the nodes placed).
     pipeline_edit_state: NodeGraphEditState,
+    /// System responsible for executing the pipeline, described py [pipeline].
     pipeline_executor: pipeline::PipelineExecutor,
 
+    /// High level description of data views (Views that show data from the pipeline).
     data_views_state: DataViewsState,
+    /// System responsible for modifying [data_views_state], hooking them into
+    /// the pipeline and creating tabs in the UI for them.
     data_views_manager: DataViewsManager,
+    /// System responsible for execution of the data views.
     data_views_executor: ViewsExecutor,
 
+    /// States of all tabs in the UI.
     dock_state: DockState,
 
+    /// Key-value cache to reduce redundancy (Mostly when uploading large
+    /// resources to the GPU, for example when multiple views show partly the
+    /// same data).
     cache: Cache,
 
+    /// The node that got double clicked by the User.
     interacted_node: Option<NodeId>,
 
+    /// Whether and the pipeline to load (JSON). Set in [pipeline_menu_bar],
+    /// used in [update].
     load_pipeline: Option<Cow<'static, str>>,
 }
 
 impl IVOCTTestApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> IVOCTTestApp {
+        // Whether and the pipeline the user had open in the last session (JSON)
         let pipeline_json = cc.storage.unwrap().get_string("user_pipeline");
 
         let pipeline_json: Cow<_> = match pipeline_json {
             Some(json) => json.into(),
+            // Use phantom1_1_3 by default
             None => pipeline::presets::PHANTOM_1_1_3.into(),
         };
 
@@ -53,6 +69,7 @@ impl IVOCTTestApp {
             data_views_manager: DataViewsManagerBuilder::new(
                 &cc.wgpu_render_state.as_ref().unwrap(),
             )
+            // Add all available views, so the DataViewsManager can create them
             .with_view::<views::data_vector::View>()
             .with_view::<views::m_scan::View>()
             .with_view::<views::mesh::View>()
@@ -71,7 +88,7 @@ impl IVOCTTestApp {
             (pipeline::Pipeline::new(), NodeGraphEditState::new())
         });
 
-        // Clear all path that do not exist
+        // Clear all paths that do not exist
         for (_, node) in &mut pipeline.nodes {
             if let Some(node) = node
                 .as_any_mut()
@@ -107,14 +124,19 @@ impl eframe::App for IVOCTTestApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.interacted_node = None;
 
+        // Satisfy Borrow Checker: Move dock_state onto the current stack frame
         let mut dock_state = mem::replace(&mut self.dock_state, DockState::new());
 
+        // Render all tabs
         egui_dock::DockArea::new(&mut dock_state)
             .style(egui_dock::Style::from_egui(ctx.style().as_ref()))
             .show(ctx, self);
 
+        // Move dock_state back into the app struct
         self.dock_state = dock_state;
 
+        // Update data view high level description (Create new, reconnect, or
+        // delete)
         self.data_views_manager.update(
             &mut self.data_views_state,
             &mut self.pipeline,
@@ -125,11 +147,15 @@ impl eframe::App for IVOCTTestApp {
             ctx.input(|i| i.modifiers.ctrl),
         );
 
+        // Merge differences between high level pipeline description and
+        // execution system
         self.pipeline_executor.update(&mut self.pipeline);
 
+        // Same for data views. They might connect into the pipeline_executor
         self.data_views_executor
             .update(&mut self.data_views_state, &self.pipeline_executor);
 
+        // User requested to load new pipeline in this frame
         if let Some(json) = self.load_pipeline.take() {
             let (pipeline, state) = Self::load_pipeline(&json);
             self.set_pipeline(pipeline, state);
@@ -137,6 +163,8 @@ impl eframe::App for IVOCTTestApp {
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        // Called in regular intervals
+
         println!("Saving");
 
         let pipeline = serde_json::to_string(&(&self.pipeline, &self.pipeline_edit_state)).unwrap();
@@ -198,6 +226,7 @@ impl egui_dock::TabViewer for IVOCTTestApp {
                     NodeGraphEditor::new(&mut self.pipeline, &mut self.pipeline_edit_state)
                         .show(ui);
 
+                // User double clicked a node
                 if let Some(interacted_node) = _response.activated {
                     self.interacted_node = Some(interacted_node);
                 }

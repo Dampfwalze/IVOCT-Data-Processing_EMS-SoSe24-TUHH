@@ -16,6 +16,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::node_graph::*;
 
+/// Contains every information about nodes that is only relevant to the editing
+/// of a node graph, like node positions and their drawing order.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeGraphEditState {
     node_states: HashMap<NodeId, NodeFrameState>,
@@ -30,12 +32,16 @@ impl NodeGraphEditState {
         }
     }
 
+    /// Ensures this state contains a state for every node, possibly creating or
+    /// deleting entries.
     pub fn sync_state(&mut self, node_ids: &[NodeId]) {
+        // Delete non-existing nodes
         self.node_states
             .retain(|node_id, _| node_ids.contains(node_id));
 
         self.node_order.retain(|node_id| node_ids.contains(node_id));
 
+        // Find the best position to add new nodes
         let mut cursor = self
             .node_states
             .values()
@@ -43,6 +49,7 @@ impl NodeGraphEditState {
             .reduce(|a, b| pos2(a.x.max(b.x), a.y.min(b.y)))
             .unwrap_or_default();
 
+        // Creating new nodes
         for node_id in node_ids {
             self.node_states.entry(*node_id).or_insert_with(|| {
                 let state = NodeFrameState {
@@ -64,6 +71,7 @@ impl NodeGraphEditState {
     }
 }
 
+/// Trait describing a node graph to the [NodeGraphEditor].
 pub trait EditNodeGraph {
     fn get_node_ids(&self) -> Vec<NodeId>;
 
@@ -76,6 +84,7 @@ pub trait EditNodeGraph {
     fn addable_nodes(&self) -> Vec<&'static str>;
 }
 
+/// Trait describing a node that is part of a node graph to the [NodeGraphEditor].
 pub trait EditNode {
     type OutputId: Into<OutputId> + From<OutputId>;
     type InputId: Into<InputId> + From<InputId>;
@@ -126,6 +135,8 @@ impl<T: EditNode> DynEditNode for T {
     }
 }
 
+/// Wrapper around [egui::Ui], additionally describing the node inputs and
+/// outputs.
 pub struct NodeUi<'a> {
     ui: &'a mut egui::Ui,
     inputs: &'a mut Vec<CollectedInput>,

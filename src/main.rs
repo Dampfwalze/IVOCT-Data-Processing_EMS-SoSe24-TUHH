@@ -20,6 +20,7 @@ async fn main() {
         eframe::NativeOptions {
             renderer: eframe::Renderer::Wgpu,
             hardware_acceleration: eframe::HardwareAcceleration::Preferred,
+            // Depth buffer needed for 3D view
             depth_buffer: 24,
             wgpu_options: eframe::egui_wgpu::WgpuConfiguration {
                 supported_backends: wgpu::Backends::PRIMARY,
@@ -43,6 +44,7 @@ async fn main() {
             ..Default::default()
         },
         Box::new(|cc| {
+            // Force dark mode
             cc.egui_ctx.set_style(egui::Style {
                 visuals: egui::Visuals::dark(),
                 ..egui::Style::default()

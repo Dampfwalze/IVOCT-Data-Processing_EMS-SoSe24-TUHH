@@ -16,6 +16,8 @@ use std::{
 
 use crate::node_graph::{impl_enum_from_into_id_types, NodeId, TypeId};
 
+/// Enum defining all high level data types that are used in the pipeline
+/// description, to determine if pins are able to connect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PipelineDataType {
     RawMScan,
@@ -49,6 +51,7 @@ impl PipelineDataType {
     ];
 }
 
+/// High Level description of a pipeline
 #[derive(Serialize, Deserialize)]
 pub struct Pipeline {
     pub nodes: HashMap<NodeId, Box<dyn DynPipelineNode>>,

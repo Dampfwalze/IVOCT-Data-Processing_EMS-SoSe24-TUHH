@@ -1,5 +1,7 @@
 use tokio::sync::watch;
 
+/// A channel using a queue with specified capacity, where every new receiver
+/// starts receiving the oldest value, that is still applicable.
 pub fn channel<T: Clone>(capacity: usize) -> (Sender<T>, Receiver<T>) {
     let (tx, rx) = watch::channel(Queue::new(capacity));
 

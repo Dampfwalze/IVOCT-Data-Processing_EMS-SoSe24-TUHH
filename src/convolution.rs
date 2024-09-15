@@ -2,6 +2,10 @@ use nalgebra::*;
 use num_traits::Zero;
 use rayon::prelude::*;
 
+/// Convolve a specified kernel over a specified matrix in parallel and return
+/// the result as a new owned matrix.
+///
+/// Matrix is mirrored on the edges.
 pub fn convolve_par<T, D1, D2, S1, DK1, DK2, S2>(
     matrix: &Matrix<T, D1, D2, S1>,
     kernel: &Matrix<T, DK1, DK2, S2>,

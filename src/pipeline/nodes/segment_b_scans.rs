@@ -18,10 +18,15 @@ use super::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
+    /// How many neighboring A scans to consider when comparing A scans.
     pub neighbor_count: usize,
+    /// How wide of an area to cover when comparing A scans.
     pub neighborhood_width: usize,
+    /// Where to start the search for the next border.
     pub search_range_start: usize,
+    /// Where to stop the search for the next border.
     pub search_range_end: usize,
+    /// Offset to the start index.
     pub offset: usize,
 }
 
@@ -251,6 +256,7 @@ where
 {
     use rayon::prelude::*;
 
+    // Get a view from the start offset into the M scan
     let m_scan = m_scan.columns_range(start..);
 
     let step_size = settings.neighborhood_width / settings.neighbor_count;
@@ -285,6 +291,8 @@ where
     start + index
 }
 
+/// Calculates the euclidean distance between the scans in the reference area
+/// and the specified area and calculates their mean.
 fn calculate_distance_sq_of_neighborhood<T>(
     m_scan: DMatrixView<T>,
     range: impl Iterator<Item = usize>,

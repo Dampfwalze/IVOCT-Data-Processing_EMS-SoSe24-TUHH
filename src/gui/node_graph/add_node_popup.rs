@@ -1,3 +1,4 @@
+/// A popup, where the user can choose a node he wants to add to the node graph.
 pub struct AddNodePopup {
     categories: Vec<(&'static str, Item)>,
 }

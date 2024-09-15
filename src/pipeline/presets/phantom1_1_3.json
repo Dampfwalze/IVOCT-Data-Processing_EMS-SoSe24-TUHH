@@ -68,23 +68,14 @@
         "type": "filter",
         "filter_type": "Gaussian",
         "gauss_settings": {
-          "kernel_size": [
-            3,
-            10
-          ],
+          "kernel_size": [3, 10],
           "sigma": 5.0
         },
         "median_settings": {
-          "size": [
-            3,
-            3
-          ]
+          "size": [3, 3]
         },
         "wiener_settings": {
-          "neighborhood_size": [
-            3,
-            3
-          ]
+          "neighborhood_size": [3, 3]
         },
         "prewitt_settings": {
           "threshold": 0.0
@@ -127,23 +118,14 @@
         "type": "filter",
         "filter_type": "Prewitt",
         "gauss_settings": {
-          "kernel_size": [
-            3,
-            3
-          ],
+          "kernel_size": [3, 3],
           "sigma": 1.0
         },
         "median_settings": {
-          "size": [
-            3,
-            3
-          ]
+          "size": [3, 3]
         },
         "wiener_settings": {
-          "neighborhood_size": [
-            3,
-            3
-          ]
+          "neighborhood_size": [3, 3]
         },
         "prewitt_settings": {
           "threshold": 0.2
@@ -168,23 +150,14 @@
         "type": "filter",
         "filter_type": "WidenStructures",
         "gauss_settings": {
-          "kernel_size": [
-            3,
-            3
-          ],
+          "kernel_size": [3, 3],
           "sigma": 1.0
         },
         "median_settings": {
-          "size": [
-            3,
-            3
-          ]
+          "size": [3, 3]
         },
         "wiener_settings": {
-          "neighborhood_size": [
-            3,
-            3
-          ]
+          "neighborhood_size": [3, 3]
         },
         "prewitt_settings": {
           "threshold": 0.0
@@ -251,6 +224,65 @@
           "value": null,
           "connection": {
             "node_id": 10,
+            "output_id": 0,
+            "type_id": 4
+          }
+        }
+      },
+      "12": {
+        "type": "diameter",
+        "settings": {
+          "mm_per_pixel": 0.0055,
+          "refraction_index": 1.33,
+          "catheter_diameter": 0.9,
+          "use_catheter_diameter": false
+        },
+        "b_scans": {
+          "value": null,
+          "connection": {
+            "node_id": 7,
+            "output_id": 0,
+            "type_id": 3
+          }
+        },
+        "catheter": {
+          "value": null,
+          "connection": {
+            "node_id": 10,
+            "output_id": 0,
+            "type_id": 4
+          }
+        },
+        "lumen": {
+          "value": null,
+          "connection": {
+            "node_id": 11,
+            "output_id": 0,
+            "type_id": 4
+          }
+        }
+      },
+      "13": {
+        "type": "generate_mesh",
+        "settings": {
+          "rotational_samples": 100,
+          "rotation_frequency": 180.0,
+          "pullback_speed": 18.0,
+          "mm_per_pixel": 0.0055,
+          "refraction_index": 1.0
+        },
+        "b_scans": {
+          "value": null,
+          "connection": {
+            "node_id": 7,
+            "output_id": 0,
+            "type_id": 3
+          }
+        },
+        "lumen": {
+          "value": null,
+          "connection": {
+            "node_id": 11,
             "output_id": 0,
             "type_id": 4
           }
@@ -325,20 +357,20 @@
           "x": 1805.0,
           "y": 5.0
         }
+      },
+      "12": {
+        "position": {
+          "x": 2055.0,
+          "y": 255.0
+        }
+      },
+      "13": {
+        "position": {
+          "x": 2055.0,
+          "y": 5.0
+        }
       }
     },
-    "node_order": [
-      1,
-      2,
-      3,
-      4,
-      5,
-      6,
-      7,
-      8,
-      9,
-      10,
-      11
-    ]
+    "node_order": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
   }
 ]

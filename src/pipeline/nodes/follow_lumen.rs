@@ -17,6 +17,8 @@ pub struct Settings {
     pub window_extend_up: usize,
     pub window_extend_down: usize,
     pub threshold: f64,
+    /// Whether to check for artifacts above the path to interpolate in these
+    /// regions.
     pub check_artifact: bool,
     pub artifact_threshold: f64,
 }
@@ -324,12 +326,16 @@ impl NodeTask for Task {
     }
 }
 
+// MARK: Find start height
+
 fn find_start_height<T>(m_scan: DMatrixView<T>, start_height: u32) -> u32
 where
     T: nalgebra::Scalar + Clone + Copy + PartialOrd + Zero + Mul<Output = T> + num_traits::NumCast,
 {
+    // Ensure start_hight does not overflow
     let start_height = (start_height as usize + 20).min(m_scan.nrows() - 1);
 
+    // Get a view from 0 to start_height of the first A scan
     let a_scan = m_scan.get((start_height.., 0)).unwrap();
 
     let min = a_scan
@@ -346,6 +352,8 @@ where
         .reduce(|a, b| if a > b { a } else { b })
         .unwrap_or(T::zero());
 
+    // Calculate the threshold to be at 1/2th between the min and max value of
+    // the search window
     let threshold =
         min + num_traits::cast((max.to_f64().unwrap() - min.to_f64().unwrap()) * 0.5).unwrap();
 
@@ -357,6 +365,8 @@ where
 
     start_height as u32
 }
+
+// MARK: Follow lumen
 
 fn follow_lumen<T>(
     m_scan: DMatrixView<T>,
@@ -381,6 +391,7 @@ where
     let mut height = start_height as usize;
 
     for i in 0..m_scan.ncols() {
+        // window_start is clamped with the catheter
         let window_start = height
             .saturating_sub(st.window_extend_up)
             .max(catheter_seg[m_scan_offset + i] as usize);
@@ -388,6 +399,8 @@ where
 
         let window = m_scan.get((window_start..=window_end, i)).unwrap();
 
+        // Search for the next pixel upwards. The search window is multiplied
+        // with a hann window
         let mut max_index = usize::MAX;
         for (i, value) in window.iter().copied().enumerate() {
             let value = value.to_f64().unwrap()
@@ -403,6 +416,7 @@ where
 
             lumen_line[i] = height as u32;
         } else {
+            // Will be interpolated later
             lumen_line[i] = u32::MAX;
         }
     }
@@ -410,7 +424,7 @@ where
     let end_height = height as u32;
 
     if st.check_artifact {
-        // Remove where there is artifact above
+        // Remove where there is an artifact above
         for i in 0..m_scan.ncols() {
             if lumen_line[i] == u32::MAX {
                 continue;
@@ -455,11 +469,13 @@ fn interpolate_lumen(lumen: &mut Vec<u32>, til: &mut usize) {
 
     while i < lumen.len() {
         if lumen[i] == u32::MAX {
+            // Find next A scan, where the lumen was found
             let mut j = i + 1;
             while j < lumen.len() && lumen[j] == u32::MAX {
                 j += 1;
             }
 
+            // Interpolate all values between found borders
             if j < lumen.len() {
                 let start = lumen[i - 1];
                 let end = lumen[j];

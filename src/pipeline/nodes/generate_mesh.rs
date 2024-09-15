@@ -11,6 +11,7 @@ use super::prelude::*;
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 
 pub struct Settings {
+    /// How many vertices should make up one rotation.
     pub rotational_samples: u32,
 
     pub rotation_frequency: f32,
@@ -213,6 +214,9 @@ impl NodeTask for Task {
     }
 }
 
+// MARK: Resample B scan
+
+/// Resamples a segmentation to [Settings::rotational_samples] samples
 fn resample_b_scan(
     b_scan_start: usize,
     b_scan_end: usize,
@@ -239,6 +243,9 @@ fn resample_b_scan(
     resampled
 }
 
+// MARK: Generate mesh
+
+/// Generates the mesh for one B scan
 fn generate_mesh(
     b_scan_prev: usize,
     b_scan: usize,
@@ -256,6 +263,7 @@ fn generate_mesh(
     let width = st.pullback_speed / st.rotation_frequency;
 
     for i in 0..=st.rotational_samples {
+        // Value from 0.0..1.0
         let rot = i as f32 / st.rotational_samples as f32;
 
         let i = i % st.rotational_samples;
@@ -295,6 +303,7 @@ fn generate_mesh(
             current_idx + 3,
         ]);
     }
+    // Last 6 indices are too much
     indices.resize(indices.len() - 6, 0);
 
     LumenMesh { vertices, indices }

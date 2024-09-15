@@ -33,7 +33,9 @@ impl_enum_from_into_id_types!(InputId, [graph::InputId], {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
+    /// Factor every value is multiplied with bevor processing.
     pub factor: f64,
+    /// How many values to ignore when finding the value range of the data.
     pub rescale_cutoff: usize,
 
     #[serde(skip)]
@@ -219,6 +221,7 @@ impl NodeTask for Task {
                         shared.upper = l_upper.last().copied();
                     }
 
+                    // Rescale every value
                     if let (Some(lower), Some(upper)) = (shared.lower, shared.upper) {
                         m_scan.par_column_iter_mut().for_each(|mut c| {
                             for x in c.iter_mut() {
@@ -248,6 +251,10 @@ impl NodeTask for Task {
 
 // MARK: Rescaling
 
+/// Finds the bounds of the value range the dataset has. It sorts every value
+/// and skips a set number of values at the top and bottom of the range to find
+/// the bounds. This ensures a well distributed range, while sacrificing a few
+/// values at the upper and lower bound, that are being clamped.
 fn find_bounds_par(data: &[f32], nth: usize) -> (Vec<f32>, Vec<f32>) {
     let upper = Mutex::new(Vec::new());
     let lower = Mutex::new(Vec::new());
@@ -256,6 +263,8 @@ fn find_bounds_par(data: &[f32], nth: usize) -> (Vec<f32>, Vec<f32>) {
         let threads = rayon::current_num_threads();
         let block_size = (data.len() / threads) + 1;
 
+        // Assign data to every running thread. Each thread has its own buckets,
+        // which will be merged together in the end
         for i in 0..threads {
             let upper = &upper;
             let lower = &lower;
@@ -289,6 +298,7 @@ fn find_bounds_par(data: &[f32], nth: usize) -> (Vec<f32>, Vec<f32>) {
     (lower.into_inner().unwrap(), upper.into_inner().unwrap())
 }
 
+/// merges two sorted buckets of values according to the specified ordering.
 fn merge(a: &[f32], b: &[f32], nth: usize, ordering: Ordering) -> Vec<f32> {
     let mut result = Vec::with_capacity(nth);
 
@@ -326,12 +336,16 @@ fn merge(a: &[f32], b: &[f32], nth: usize, ordering: Ordering) -> Vec<f32> {
     result
 }
 
+/// Sorts every value into a bucket for high values and a bucket for low values.
 fn find_bounds(data: &[f32], nth: usize) -> (Vec<f32>, Vec<f32>) {
     let mut lower = Vec::with_capacity(nth);
     let mut upper = Vec::with_capacity(nth);
 
+    // Adds a value at the correct position into vec, so that the ordering is
+    // preserved
     let add_to_vec = |v: f32, vec: &mut Vec<f32>, ordering: Ordering| {
         if !v.is_normal() && v != 0.0 {
+            // don't add NaN and Inf
             return;
         }
 
@@ -481,7 +495,7 @@ fn pre_process_raw_m_scan(
         c -= &mean;
     });
 
-    // Apply Chirp
+    // De-chirp
     if let Some(chirp) = chirp {
         raw_scan.par_column_iter_mut().for_each(|mut c| {
             let new_col = linear_sample(chirp.as_slice(), c.as_slice(), 0..a_scan_samples);

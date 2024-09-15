@@ -1,3 +1,6 @@
+/// Types needed to define a hight level node graph description
+
+///
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -18,6 +21,8 @@ pub enum PinId {
     Input(InputId),
 }
 
+/// Uniquely identifies a node output using the node id of the node it belongs
+/// to and the output id. Additionally carried the type id of the output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeOutput {
     pub node_id: NodeId,
@@ -35,6 +40,8 @@ impl NodeOutput {
     }
 }
 
+/// A node input that can be connected to a node output. Has a default value, if
+/// it is not connected, of type T. Set T to () if not needed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct NodeInput<T> {
     value: T,
@@ -79,6 +86,8 @@ impl<T: Default> Default for NodeInput<T> {
     }
 }
 
+/// Macro to implement Into<T> and From<T> traits for enums into id types, like
+/// [TypeId], [InputId], or [OutputId].
 macro_rules! impl_enum_from_into_id_types {
     ($t:tt, [ $($id_type:ty),+ ], { $($index:expr => $variant:ident),+$(,)? }) => {
         impl_enum_from_into_id_types!(@call_tuple $t, { $($id_type ),+ } ( $($index, $variant),+ ));
@@ -143,15 +152,19 @@ impl From<InputId> for PinId {
     }
 }
 
+/// Used for nodes that don't have any inputs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InputIdNone;
 
+/// Used for nodes that only have one input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct InputIdSingle;
 
+/// Used for nodes that don't have any outputs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OutputIdNone;
 
+/// Used for nodes that only have one output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct OutputIdSingle;
 

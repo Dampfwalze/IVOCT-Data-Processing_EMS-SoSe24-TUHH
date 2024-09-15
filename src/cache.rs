@@ -6,9 +6,14 @@ use std::{
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak},
 };
 
+/// Key-value store for caching purposes.
+///
+/// The key consists of a unique key and a type id. Values of different types
+/// can have the same key.
 #[derive(Clone)]
 pub struct Cache(Arc<_Shared>);
 
+/// Reference to a cached value of type T inside a [Cache].
 pub struct Cached<T> {
     cache: Arc<_Shared>,
     entry: _CacheEntry,
@@ -31,10 +36,12 @@ impl Cache {
         Self(Arc::new(_Shared(RwLock::new(HashMap::new()))))
     }
 
+    /// Get an existing value or create a new one.
     pub fn get<T: Default + Send + Sync + 'static>(&self, key: impl Hash) -> Cached<T> {
         self.get_or_insert_with(key, T::default)
     }
 
+    /// Get an existing value or create a new one using the specified factory.
     pub fn get_or_insert_with<T: Send + Sync + 'static>(
         &self,
         key: impl Hash,
@@ -69,6 +76,10 @@ impl fmt::Debug for Cache {
 // MARK: Cached<T>
 
 impl<T: Send + Sync + 'static> Cached<T> {
+    /// Get read access to the cached value. Multiple requesters can get read
+    /// access, but no one can get read access if someone has write access.
+    ///
+    /// Will wait for blocking locks to release.
     pub fn read<'a>(&'a self) -> RwLockReadGuard<'a, T> {
         self.entry
             .downcast_ref::<T>()
@@ -77,6 +88,10 @@ impl<T: Send + Sync + 'static> Cached<T> {
             .unwrap()
     }
 
+    /// Get write access to the cached value. Only one requester can get write
+    /// access at a time.
+    ///
+    /// Will wait for blocking locks to release.
     pub fn write<'a>(&'a self) -> RwLockWriteGuard<'a, T> {
         self.entry
             .downcast_ref::<T>()
@@ -85,6 +100,8 @@ impl<T: Send + Sync + 'static> Cached<T> {
             .unwrap()
     }
 
+    /// Changes the value being referenced, possibly deleting the old value and
+    /// possibly creating a new value.
     pub fn change_target(&mut self, key: impl Hash)
     where
         T: Default,
@@ -92,6 +109,8 @@ impl<T: Send + Sync + 'static> Cached<T> {
         self.change_target_or_insert(key, T::default);
     }
 
+    /// Changes the value being referenced, possibly deleting the old value and
+    /// possibly creating a new value using the specified factory.
     pub fn change_target_or_insert(&mut self, key: impl Hash, f: impl FnOnce() -> T) {
         let key = CacheKey::new(key);
         self.entry = self.cache.get_cache_or_insert_with(key, f);

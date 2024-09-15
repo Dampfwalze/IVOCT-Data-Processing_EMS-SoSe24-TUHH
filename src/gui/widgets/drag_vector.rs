@@ -7,6 +7,7 @@ use egui::vec2;
 use egui::DragValue;
 use egui::Widget;
 
+/// Multiple [egui::DragValue]s next to each other.
 pub struct DragVector<'a, const D: usize> {
     value: [DragValue<'a>; D],
 }

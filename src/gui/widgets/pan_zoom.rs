@@ -4,7 +4,8 @@ pub struct PanZoom {
     max_zoom: f32,
     min_zoom: f32,
 }
-
+/// Handles panning and zooming interactions and applies them to the layer
+/// transform.
 impl PanZoom {
     pub fn new() -> Self {
         Self {

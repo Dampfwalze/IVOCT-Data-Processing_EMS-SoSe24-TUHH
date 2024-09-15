@@ -88,6 +88,7 @@ pub struct BWareOpenSettings {
 
 // MARK: Node
 
+/// This node implements all image filters.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub filter_type: FilterType,
@@ -571,6 +572,7 @@ where
 
                 bucket.sort_unstable_by(|a, b| {
                     a.partial_cmp(b).unwrap_or_else(|| {
+                        // One value is NaN
                         if a.partial_cmp(&T::zero()).is_none() {
                             std::cmp::Ordering::Greater
                         } else {
@@ -588,6 +590,8 @@ where
 
 // MARK: Align Brightness
 
+/// Aligns the brightness of each A Scan, so that the mean value of every A scan
+/// is equal.
 fn compute_align_brightness_par<T>(matrix: DMatrixView<T>) -> DMatrix<T>
 where
     T: Scalar
@@ -626,6 +630,7 @@ where
 
 // MARK: Wiener
 
+/// See https://mathworks.com/help/images/ref/wiener2.html#d126e348493
 fn compute_wiener_par<T>(matrix: DMatrixView<T>, settings: &WienerSettings) -> DMatrix<T>
 where
     T: Scalar
@@ -649,18 +654,19 @@ where
 
     let inverse_size = T::one() / num_traits::cast(size.x * size.y).unwrap();
 
-    let mut temp = DMatrix::<(T, T)>::from_fn(matrix.nrows(), matrix.ncols(), |_, _| {
+    let mut mean_variance = DMatrix::<(T, T)>::from_fn(matrix.nrows(), matrix.ncols(), |_, _| {
         (T::zero(), T::zero())
     });
 
-    temp.par_column_iter_mut()
+    mean_variance
+        .par_column_iter_mut()
         .enumerate()
         .for_each(|(col, mut col_data)| {
             for (row, value) in col_data.iter_mut().enumerate() {
                 let start_col = col as isize - (size.x / 2) as isize;
                 let start_row = row as isize - (size.y / 2) as isize;
 
-                let get_row_col = |k_row: isize, k_col: isize| {
+                let get_row_col_idx = |k_row: isize, k_col: isize| {
                     let m_row = (start_row + k_row).abs() as usize;
                     let m_col = (start_col + k_col).abs() as usize;
 
@@ -683,7 +689,7 @@ where
 
                 for k_col in 0..size.x as isize {
                     for k_row in 0..size.y as isize {
-                        let (m_row, m_col) = get_row_col(k_row, k_col);
+                        let (m_row, m_col) = get_row_col_idx(k_row, k_col);
 
                         sum += matrix[(m_row, m_col)];
                     }
@@ -696,7 +702,7 @@ where
 
                 for k_col in 0..size.x as isize {
                     for k_row in 0..size.y as isize {
-                        let (m_row, m_col) = get_row_col(k_row, k_col);
+                        let (m_row, m_col) = get_row_col_idx(k_row, k_col);
 
                         let val = matrix[(m_row, m_col)];
                         sum += val * val - mean_sq;
@@ -710,15 +716,15 @@ where
         });
 
     // Use mean of all local variances as noise variance
-    let noise_variance = temp
+    let noise_variance = mean_variance
         .par_column_iter()
         .map(|col| col.iter().map(|(_, lv)| *lv).sum::<T>() / num_traits::cast(col.len()).unwrap())
         .sum::<T>()
-        / num_traits::cast(temp.ncols()).unwrap();
+        / num_traits::cast(mean_variance.ncols()).unwrap();
 
     result
         .par_column_iter_mut()
-        .zip(temp.par_column_iter())
+        .zip(mean_variance.par_column_iter())
         .for_each(|(mut col, temp_col)| {
             col.iter_mut()
                 .zip(temp_col.iter())
@@ -824,7 +830,7 @@ where
     result
 }
 
-// MARK: BWareOpen
+// MARK: BW Area Open
 
 fn bw_area_open_par<T>(matrix: DMatrixView<T>, settings: &BWareOpenSettings) -> DMatrix<T>
 where

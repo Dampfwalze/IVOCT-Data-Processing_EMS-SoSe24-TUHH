@@ -5,12 +5,14 @@ use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use simba::scalar::SubsetOf;
 
+/// A 3D Mesh of a lumen that can be send to the GPU for rendering.
 #[derive(Debug, Clone)]
 pub struct LumenMesh {
     pub vertices: Vec<LumenVertex>,
     pub indices: Vec<u32>,
 }
 
+/// One vertex of a [LumenMesh].
 #[derive(Debug, Clone, Copy, PartialEq, bytemuck::Zeroable, bytemuck::Pod)]
 #[repr(C)]
 pub struct LumenVertex {
@@ -39,6 +41,7 @@ impl LumenVertex {
     }
 }
 
+/// Structure containing information about the diameters in one BScan.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct BScanDiameter {
     pub b_scan_start: usize,
@@ -54,6 +57,7 @@ pub struct BScanDiameter {
 
 // MARK: DataType
 
+/// The data type of every value in a set of data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DataType {
     U8,
@@ -95,6 +99,7 @@ impl DataType {
 
 // MARK: DataVector
 
+/// A union of [DVector] with types according to [DataType].
 #[derive(Debug, Clone)]
 pub enum DataVector {
     U8(DVector<u8>),
@@ -184,6 +189,7 @@ impl DataVector {
 
 // MARK: DataMatrix
 
+/// A union of [DMatrix] with types according to [DataType].
 #[derive(Debug, Clone)]
 pub enum DataMatrix {
     U8(DMatrix<u8>),
@@ -272,6 +278,12 @@ impl DataMatrix {
         }
     }
 
+    /// Casts [self] to [data_type] in parallel and rescale all values to a
+    /// specific range.
+    ///
+    /// - For integer types, this range is from its minimum value to its maximum
+    ///   value.
+    /// - For floating point types, this range is from 0.0 to 1.0.
     pub fn cast_rescale_par(&self, data_type: DataType) -> DataMatrix {
         #[rustfmt::skip]
         macro_rules! impl_cast_rescale_par {

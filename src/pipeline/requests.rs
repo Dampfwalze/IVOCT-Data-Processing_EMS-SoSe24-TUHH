@@ -1,3 +1,5 @@
+// Definition of all request types, send between node tasks.
+
 use std::sync::Arc;
 
 use nalgebra::DVector;
@@ -107,6 +109,9 @@ pub struct MScanResponse {
 
 // MARK: StreamedResponse
 
+/// A response containing a [queue_channel::Receiver] used to receive the data
+/// over time. Type T is the type of one chunk of the data. Call
+/// [Self::subscribe] to get access to the receiver.
 #[derive(Debug, Clone)]
 pub struct StreamedResponse<T: Clone>(queue_channel::Receiver<T>);
 

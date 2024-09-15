@@ -2,6 +2,11 @@ use egui::{InnerResponse, Rect, Ui};
 
 use super::PanZoom;
 
+/// Handles panning and zooming interactions and applies them to a [Rect] that
+/// is passed to `add_content` in window coordinates and normalized coordinates,
+/// meaning it ranges from 0..1, where 0 is the lower border of the containing
+/// max rect and 1 is the upper border of the containing max rect. No layer
+/// transformations are applied.
 pub struct PanZoomRect {
     zoom_x: bool,
     zoom_y: bool,

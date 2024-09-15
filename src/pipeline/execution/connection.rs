@@ -3,6 +3,8 @@ use std::{any::Any, sync::Arc};
 use futures::future::BoxFuture;
 use tokio::sync::{mpsc, watch};
 
+/// An input to a node task. Can be connected to one [TaskOutput] with same
+/// request type `Req`.
 #[derive(Debug)]
 pub enum TaskInput<Req: Request> {
     Disconnected(Option<Req::Response>),
@@ -13,6 +15,8 @@ pub enum TaskInput<Req: Request> {
     },
 }
 
+/// An output of a node task. Can be connected to multiple [TaskInput]s with
+/// same request type `Req`.
 #[derive(Debug)]
 pub struct TaskOutput<Req: Request> {
     working_on: Option<Req>,
@@ -190,14 +194,23 @@ impl<Req: Request> Default for TaskInput<Req> {
     }
 }
 
+/// Describes the request send by a [TaskInput] to a [TaskOutput].
+///
+/// [Request::Response] is the type send back in response to this request.
 pub trait Request: Send + Sync + Clone + 'static {
     type Response: Send + Sync + Clone + 'static;
 
+    /// When there is already a response from the node task to another
+    /// requester, it can be reused for this request, if this method returns
+    /// `true`.
     fn is_response_valid(&self, _response: &Self::Response) -> bool {
         true
     }
 }
 
+/// Handle to an output connection, hiding its concrete request type. Can be
+/// used to create a connection to a [TaskInput] from the referred [TaskOutput].
+/// This only works if both have the same request type.
 #[derive(Clone)]
 pub struct ConnectionHandle {
     connection: Arc<dyn _DynConnectionHandle>,

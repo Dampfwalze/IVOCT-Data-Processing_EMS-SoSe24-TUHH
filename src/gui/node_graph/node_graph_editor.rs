@@ -12,11 +12,17 @@ use super::{
     NodeGraphEditState, NodeId, NodeOutput, NodeUi, OutputId, TypeId,
 };
 
+/// Response returned to the caller from [NodeGraphEditor::show].
 pub struct NodeGraphResponse {
     pub selected: Option<NodeId>,
+    /// The node being double clicked.
     pub activated: Option<NodeId>,
 }
 
+/// An editor for a node graph.
+///
+/// The node graph must implement the [EditNodeGraph] trait. Every node in the
+/// node graph must implement the [super::EditNode] trait.
 pub struct NodeGraphEditor<'a> {
     pipeline: &'a mut dyn EditNodeGraph,
     state: &'a mut NodeGraphEditState,
@@ -178,6 +184,7 @@ impl<'a> NodeGraphEditor<'a> {
                     } else {
                         if let Some(payload) = response.dnd_hover_payload() {
                             if let DragPayload(_, _, PayloadPin::Output(_, _)) = *payload {
+                                // Payload is output
                                 pending_connection_end = Some(input.pos);
                             }
                         }
@@ -220,6 +227,7 @@ impl<'a> NodeGraphEditor<'a> {
                     } else {
                         if let Some(payload) = response.dnd_hover_payload() {
                             if let DragPayload(_, _, PayloadPin::Input(_)) = *payload {
+                                // Payload is input
                                 pending_connection_end = Some(output.pos);
                             }
                         }
@@ -310,6 +318,7 @@ impl<'a> NodeGraphEditor<'a> {
             (connections, *transform)
         });
 
+        // Connection cutting
         if let (_, Some(line)) = DrawCut.ui(ui) {
             let line = line
                 .iter()
@@ -328,6 +337,7 @@ impl<'a> NodeGraphEditor<'a> {
             }
         }
 
+        // Context menu to add nodes
         response.context_menu(|ui| {
             if let Some(path) = AddNodePopup::new(&pipeline.addable_nodes()).show(ui) {
                 ui.close_menu();

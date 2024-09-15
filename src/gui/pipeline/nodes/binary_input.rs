@@ -6,12 +6,12 @@ use super::prelude::*;
 
 use crate::pipeline::{nodes::binary_input::*, types::DataType};
 
-impl fmt::Display for OutputId {
+impl fmt::Display for InputDataType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            OutputId::RawMScan => write!(f, "Raw M scan"),
-            OutputId::MScan => write!(f, "M scan"),
-            OutputId::DataVector => write!(f, "Data vector"),
+            InputDataType::RawMScan => write!(f, "Raw M scan"),
+            InputDataType::MScan => write!(f, "M scan"),
+            InputDataType::DataVector => write!(f, "Data vector"),
         }
     }
 }
@@ -30,7 +30,7 @@ impl fmt::Display for DataType {
 }
 
 impl EditNode for Node {
-    type OutputId = OutputId;
+    type OutputId = InputDataType;
     type InputId = InputIdNone;
 
     fn name(&self) -> &str {
@@ -62,7 +62,7 @@ impl EditNode for Node {
         ComboBox::from_id_source(ui.id().with("input_type"))
             .selected_text(format!("{}", self.input_type))
             .show_ui(ui, |ui| {
-                for input_type in OutputId::VALUES {
+                for input_type in InputDataType::VALUES {
                     ui.selectable_value(
                         &mut self.input_type,
                         input_type,
@@ -81,7 +81,7 @@ impl EditNode for Node {
 
         ui.add(PathInput::new(&mut self.path));
 
-        if let OutputId::RawMScan | OutputId::MScan = self.input_type {
+        if let InputDataType::RawMScan | InputDataType::MScan = self.input_type {
             ui.add(
                 DragValue::new(&mut self.a_scan_length)
                     .speed(1)

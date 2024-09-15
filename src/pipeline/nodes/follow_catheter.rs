@@ -14,9 +14,14 @@ use super::prelude::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
+    /// A point somewhere above the catheter. This point is the starting point
+    /// to find the catheter.
     pub start_height: u32,
+    /// The size of the search window / 2.
     pub window_extend: usize,
+    /// How many previous A scans to use for smoothing.
     pub smoothing_window: usize,
+    /// Used to determine which pixel is considered to be white.
     pub threshold: f64,
 }
 
@@ -273,12 +278,16 @@ impl NodeTask for Task {
     }
 }
 
+// MARK: Find start height
+
 fn find_start_height<T>(m_scan: DMatrixView<T>, start_height: u32) -> u32
 where
     T: nalgebra::Scalar + Clone + Copy + PartialOrd + Zero + Mul<Output = T> + num_traits::NumCast,
 {
+    // Ensure start_hight does not overflow
     let start_height = (start_height as usize).min(m_scan.nrows() - 1);
 
+    // Get a view from 0 to start_height of the first A scan
     let a_scan = m_scan.get((..start_height, 0)).unwrap();
 
     let min = a_scan
@@ -293,6 +302,8 @@ where
         .reduce(|a, b| if a > b { a } else { b })
         .unwrap_or(T::zero());
 
+    // Calculate the threshold to be at 1/5th between the min and max value of
+    // the search window
     let threshold =
         min + num_traits::cast((max.to_f64().unwrap() - min.to_f64().unwrap()) * 0.2).unwrap();
 
@@ -305,6 +316,14 @@ where
     start_height as u32
 }
 
+// MARK: Find catheter
+
+/// Follow the catheter beginning at the A scan at `m_scan_offset` at a height
+/// of `start_height`.
+///
+/// Uses the catheter line of the previous B scans that where already walked
+/// through to constrain the search window to prevent it from leaving the
+/// catheter because of artifacts and collisions with the lumen.
 fn follow_catheter<T>(
     m_scan: DMatrixView<T>,
     segmentation: &mut Vec<f32>,
@@ -327,6 +346,7 @@ where
 
     let mut height = start_height as usize;
 
+    // Track the current B scan
     let (mut cur_period_end_idx, _) = periods
         .iter()
         .copied()
@@ -334,6 +354,8 @@ where
         .find(|&(_, p)| p > m_scan_offset)
         .unwrap_or((0, 0));
 
+    // Used to find the correct value in the previous B scan. B scans can have
+    // different size.
     let mean_period_size =
         periods.windows(2).map(|p| p[1] - p[0]).sum::<usize>() / (periods.len() - 1);
 
@@ -378,6 +400,8 @@ where
 
         let window = m_scan.get((window_start..=window_end, i)).unwrap();
 
+        // Search for the next pixel downwards. The search window is multiplied
+        // with a hann window
         let mut max_index = st.window_extend;
         for (i, value) in window.iter().copied().enumerate().rev() {
             let value =
@@ -392,6 +416,7 @@ where
 
         segmentation.push(height as f32);
 
+        // Apply smoothing
         if segmentation.len() > st.smoothing_window {
             let idx = segmentation.len() - st.smoothing_window / 2 - 1;
 
@@ -404,7 +429,8 @@ where
         }
     }
 
-    // Second pass
+    // Second pass, again search for the catheter, but not constraining the
+    // search window. Instead, clamp the result with the result of the last pass
     let mut height = start_height as usize;
     for i in 0..m_scan.ncols() {
         let window_start = height.saturating_sub(st.window_extend);

@@ -1,5 +1,7 @@
 use egui::{Color32, Pos2, Sense, Shape, Stroke};
 
+/// Widget the user can draw a line on, by holding right click. This line is
+/// used to determine which connections to cut in a node graph.
 pub struct DrawCut;
 
 impl DrawCut {

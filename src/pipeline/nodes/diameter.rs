@@ -13,6 +13,8 @@ pub struct Settings {
     pub refraction_index: f32,
     #[serde(default)]
     pub catheter_diameter: f32,
+    /// Whether to calculate the catheter diameter automatically or to use
+    /// [Self::catheter_diameter].
     #[serde(default)]
     pub use_catheter_diameter: bool,
 }
@@ -132,6 +134,7 @@ impl NodeTask for Task {
     async fn run(&mut self) -> anyhow::Result<()> {
         let _req = self.diameter_out.receive().await;
 
+        // Request data from inputs
         let (Some(b_scans_res), Some(catheter_res), Some(lumen_res)) = futures::join!(
             self.b_scans_in.request(requests::BScanSegmentation),
             self.catheter_in.request(requests::MScanSegmentation),
@@ -140,6 +143,7 @@ impl NodeTask for Task {
             return Ok(());
         };
 
+        // Get a receiver for all inputs
         let (Some(mut b_scans), Some(mut catheter), Some(mut lumen)) = (
             b_scans_res.subscribe(),
             catheter_res.subscribe(),
@@ -218,6 +222,9 @@ impl NodeTask for Task {
     }
 }
 
+// MARK: Calculate diameter
+
+/// Calculates the diameters for one B scan.
 fn calculate_diameter(
     b_scan_start: usize,
     b_scan_end: usize,
@@ -225,6 +232,7 @@ fn calculate_diameter(
     lumen: &[u32],
     st: &Settings,
 ) -> BScanDiameter {
+    // Use only the range of this B scan
     let catheter = &catheter[b_scan_start..b_scan_end];
     let lumen = &lumen[b_scan_start..b_scan_end];
 
@@ -267,6 +275,7 @@ fn calculate_diameter(
     }
 }
 
+/// Calculates the diameter at a specific offset in the B scan.
 fn calc_diameter(
     catheter: &[u32],
     lumen: &[u32],
@@ -275,7 +284,9 @@ fn calc_diameter(
     st: &Settings,
 ) -> f32 {
     assert_eq!(catheter.len(), lumen.len());
+
     let size = lumen.len();
+    // Find all indices of the A scans that are 90° offset from each other
     let a_idx = offset;
     let c_idx = (offset + size / 4) % size;
     let b_idx = (offset + size / 2) % size;
@@ -296,12 +307,17 @@ fn calc_diameter(
     let a_b = a - b;
     let c_d = c + d + catheter_diameter;
 
+    // Pythagoras
     (a_b * a_b + c_d * c_d).sqrt()
 }
 
+/// Finds start and end positions of the line representing the diameter at this
+/// offset.
 fn calc_diameter_positions(catheter: &[u32], lumen: &[u32], offset: usize) -> [Vector2<f32>; 2] {
     assert_eq!(catheter.len(), lumen.len());
+
     let size = lumen.len();
+    // Find all indices of the A scans that are 90° offset from each other
     let a_idx = offset;
     let c_idx = (offset + size / 4) % size;
     let b_idx = (offset + size / 2) % size;

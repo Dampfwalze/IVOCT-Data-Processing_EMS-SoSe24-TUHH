@@ -47,6 +47,7 @@ mod prelude {
     pub(crate) use serde::{Deserialize, Serialize};
 }
 
+/// Trait describing a node in a high level node graph.
 pub trait PipelineNode: erased_serde::Serialize
     + fmt::Debug
     + EditNode<InputId = <Self as PipelineNode>::InputId, OutputId = <Self as PipelineNode>::OutputId>
@@ -55,25 +56,38 @@ pub trait PipelineNode: erased_serde::Serialize
     + Clone
     + 'static
 {
+    /// The type to use as input id inside this node.
     type InputId: From<InputId> + Into<InputId>;
+    /// The type to use as output id inside this node.
     type OutputId: From<OutputId> + Into<OutputId>;
 
+    /// Unique string identifier.
     fn slug() -> &'static str;
 
+    /// Return all input ids a node has and their connection state.
     fn inputs(&self)
         -> impl Iterator<Item = (<Self as PipelineNode>::InputId, Option<NodeOutput>)>;
 
+    /// Compare this node to other, returning whether they are different.
+    /// Returning true triggers a sync and invalidation in the execution system.
     fn changed(&self, other: &Self) -> bool;
 
+    /// Return which output to connect when a data view is requested. The
+    /// returned type id is advertised to the data views to determine, which
+    /// view fits the best.
     fn get_output_id_for_view_request(
         &self,
     ) -> Option<(<Self as PipelineNode>::OutputId, impl Into<TypeId>)> {
         None as Option<(_, TypeId)>
     }
 
+    /// Creates the task that becomes part of the execution system and
+    /// responsible for executing this node.
     fn create_node_task(&mut self, builder: &mut impl NodeTaskBuilder<PipelineNode = Self>);
 }
 
+/// Dynamic version of [PipelineNode]. This trait is implemented automatically
+/// for all types implementing [PipelineNode] and can be used as a trait object.
 #[typetag::serde(tag = "type")]
 pub trait DynPipelineNode: DynEditNode + Send + Sync + 'static {
     fn as_edit_node_mut(&mut self) -> &mut dyn DynEditNode;
@@ -159,6 +173,7 @@ impl<T: PipelineNode> DynPipelineNode for T {
     fn typetag_deserialize(&self) {}
 }
 
+/// Workaround for limitations in [typetag]. Use this for all nodes.
 macro_rules! deserialize_node {
     ($ty:ty, $slug:expr) => {
         typetag::__private::inventory::submit! {

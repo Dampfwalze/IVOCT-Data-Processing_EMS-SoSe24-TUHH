@@ -20,8 +20,26 @@ use super::{
 
 // MARK: PipelineExecutor
 
+/// Pipeline execution system.
+///
+/// For every node in the high level [Pipeline] description it creates a
+/// [tokio::task], running an event loop. This task is referred to as a node
+/// task. It further manages a node tasks connections to other tasks and syncing
+/// it with its high level [PipelineNode], by sending commands about connection
+/// changes and sync requests to the tasks event loop. Each node task is
+/// described using the [NodeTask] trait. Implementers are required to listen to
+/// data requests from other tasks. Each task handles only one request at a
+/// time. The processing of a request might be canceled when the configuration
+/// changes, or other tasks are invalidated, which this task depends on.
+///
+/// [Self::update] syncs the high level [Pipeline] description with the node
+/// tasks.
+///
+/// There is no shared state between node tasks and [PipelineExecutor]. Syncing
+/// only uses message channels from [tokio::sync] to communicate to node tasks.
 #[derive(Debug)]
 pub struct PipelineExecutor {
+    /// Each runner corresponds to one node in the [Pipeline].
     runners: HashMap<NodeId, RwLock<NodeTaskRunner>>,
 }
 
@@ -46,7 +64,7 @@ impl PipelineExecutor {
             }
         }
 
-        // Connections
+        // Connections and node sync
         for (node_id, runner) in &self.runners {
             let node = pipeline.nodes.get(node_id).expect("Nodes should be synced");
 
@@ -70,6 +88,8 @@ impl PipelineExecutor {
 
 // MARK: NodeTaskRunner
 
+/// Handle to a node task, holding information about the node task and all
+/// channel ends to communicate to the node task.
 struct NodeTaskRunner {
     output_handles: VecMap<[(OutputId, ConnectionHandle); 4]>,
     inputs: VecMap<[(InputId, NodeOutput); 4]>,
@@ -209,6 +229,9 @@ impl fmt::Debug for NodeTaskRunner {
 
 // MARK: RunningNodeTask
 
+/// The actual task running. It runs an event loop to receive control and sync
+/// commands from the [PipelineExecutor] and runs the [NodeTask]s own event
+/// loop, which is responsible for receiving data requests and processing data.
 struct RunningNodeTask {
     node_task: Box<dyn DynNodeTask>,
     control_rx: mpsc::UnboundedReceiver<ControlMsg>,
@@ -219,6 +242,7 @@ struct RunningNodeTask {
 }
 
 impl RunningNodeTask {
+    /// Main entry point and event loop.
     pub async fn run(mut self) {
         loop {
             tokio::select! {
@@ -247,6 +271,7 @@ impl RunningNodeTask {
                     self.invalidate(InvalidationCause::Synced);
                 }
                 input_id = Self::on_invalidation(&mut self.input_connections) => {
+                    // An input got invalidated
                     self.invalidate(InvalidationCause::InputInvalidated(input_id));
                 }
                 is_error = Self::run_task(self.error_on_last_run, self.node_task.as_mut()) => {
@@ -256,6 +281,7 @@ impl RunningNodeTask {
         }
     }
 
+    /// Run the [NodeTask::run] method, additionally handling panics and errors.
     async fn run_task(error_on_last_run: bool, task: &mut dyn DynNodeTask) -> bool {
         if error_on_last_run {
             let () = futures::future::pending().await;
@@ -283,6 +309,7 @@ impl RunningNodeTask {
         is_error
     }
 
+    /// Invalidates all outputs of this node task and itself.
     fn invalidate(&mut self, cause: InvalidationCause) {
         self.output_invalidator
             .iter()
@@ -293,9 +320,13 @@ impl RunningNodeTask {
         self.error_on_last_run = false;
     }
 
+    /// Returned future completes when any input received an invalidation
+    /// notice.
     async fn on_invalidation(notifiers: &mut Vec<(InputId, InvalidationNotifier)>) -> InputId {
         // Cannot borrow self as mutable again at call site
+
         if !notifiers.is_empty() {
+            // Await all notifiers, stopping if any completes
             let (is_channel_open, index, ..) =
                 select_all(notifiers.iter_mut().map(|(_, n)| n.on_invalidate())).await;
 
