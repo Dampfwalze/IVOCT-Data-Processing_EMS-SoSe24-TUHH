@@ -8,6 +8,11 @@ If you want to get familiar with this application, see this [application tutoria
 
 See the [Technical Overview](/doc/technical_overview.md).
 
+## Download
+
+You can download an application build
+[here](https://collaborating.tuhh.de/cem9903/ems_sose24_ivoct_testing/-/releases/v1.0.0).
+
 ## How to run
 
 ### 1. Install Rust
