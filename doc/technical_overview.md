@@ -44,11 +44,11 @@ The [main app](/src/app.rs#L19) consists of the [high level
 `Pipeline`](#high-level-pipeline), the [pipelines execution
 system](#execution-of-the-pipeline) and the [pipelines editing
 state](#editing-of-the-pipeline). As well as a
-[`DataViewState`](/src/view/mod.rs#L25), a [`DataViewsManager`] and a
-[`ViewsExecutor`]. It also stores the global [`DockState`] and provides a
+[`DataViewsState`](/src/view/mod.rs#L25), a
+[`DataViewsManager`](/src/view/views_manager.rs#L62) and a
+[`ViewsExecutor`](/src/view/execution/executor.rs#L21). It also stores the
+global [`DockState`](/src/gui/dock_state.rs#L18) and provides a
 [`Cache`](/src/cache.rs#L14).
-
-TODO: Fill out links
 
 ### Main update cycle
 
