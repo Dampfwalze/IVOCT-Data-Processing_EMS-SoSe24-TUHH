@@ -14,6 +14,7 @@ pub struct View {
     data_rx: Option<watch::Receiver<Option<Arc<DataVector>>>>,
 }
 
+/// Renders a plot of a [DataVector].
 impl DataView for View {
     type InputId = InputIdSingle;
 

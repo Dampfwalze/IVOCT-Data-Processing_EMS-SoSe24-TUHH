@@ -45,6 +45,10 @@ pub enum Existence {
     Keep,
 }
 
+/// Describes a data view.
+///
+/// Data views are rendered in their own tab and can connect to multiple nodes
+/// in the pipeline. The implementer is responsible for rendering the view.
 pub trait DataView: Send + Sync + Clone + 'static {
     type InputId: From<InputId> + Into<InputId>;
 
@@ -80,6 +84,8 @@ pub trait DataView: Send + Sync + Clone + 'static {
     fn ui(&mut self, ui: &mut egui::Ui);
 }
 
+/// Dynamic version of [DataView]. This trait is implemented automatically for
+/// all types implementing [DataView] and can be used as a trait object.
 pub trait DynDataView: Send + Sync + 'static {
     fn as_any(&self) -> &dyn any::Any;
 

@@ -22,6 +22,13 @@ impl Into<usize> for ViewId {
     }
 }
 
+/// High level description of data views and their connections into the
+/// pipeline.
+///
+/// Data views are analog to pipeline nodes, with the main difference that they
+/// render into their own tab. They are very similar to pipeline nodes, but have
+/// their own management system and execution system. They can connect into the
+/// pipeline.
 pub struct DataViewsState {
     views: HashMap<ViewId, Box<dyn DynDataView>>,
 }

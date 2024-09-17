@@ -12,6 +12,7 @@ use super::prelude::*;
 
 // MARK: View
 
+/// Renders a [types::LumenMesh].
 #[derive(Clone, Debug)]
 pub struct View {
     mesh: NodeOutput,

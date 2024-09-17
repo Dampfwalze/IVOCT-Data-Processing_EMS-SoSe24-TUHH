@@ -18,6 +18,10 @@ use super::DynDataViewTask;
 
 // MARK: ViewsExecutor
 
+/// Execution system for data view tasks, described by [super::DataViewTask].
+///
+/// Analog to the pipelines execution system. Tasks in this system can connect
+/// to tasks in the pipelines execution system.
 pub struct ViewsExecutor {
     runners: HashMap<ViewId, ViewTaskRunner>,
 }

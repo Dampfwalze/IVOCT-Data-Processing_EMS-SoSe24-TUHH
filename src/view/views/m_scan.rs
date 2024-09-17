@@ -39,6 +39,10 @@ impl_enum_from_into_id_types!(InputId, [graph::InputId], {
 
 // MARK: View
 
+/// Renders M scans in three different perspectives.
+///
+/// Each M scan gets fully uploaded to the GPU. The different perspectives are
+/// achieved by sampling the scan data in a specific way on the GPU.
 pub struct View {
     m_scan: NodeOutput,
     b_scan_segmentation: Option<NodeOutput>,

@@ -9,6 +9,12 @@ use crate::{
 
 use super::views::{DataView, DynDataView};
 
+/// Describes a data view task.
+///
+/// A data view task connects into the pipelines execution system and is
+/// responsible for acquiring data to be rendered inside the view. Since it is
+/// run in a concurrent context, it should also handle all operations on the
+/// data that are required for rendering.
 pub trait DataViewTask: Send + Sync + 'static {
     type InputId: From<InputId> + Into<InputId>;
     type DataView: DataView;
@@ -28,6 +34,8 @@ pub trait DataViewTask: Send + Sync + 'static {
     fn run(&mut self) -> impl Future<Output = anyhow::Result<()>> + Send;
 }
 
+/// Dynamic version of [DataViewTask]. This trait is implemented automatically
+/// for all types implementing [DataViewTask] and can be used as a trait object.
 pub trait DynDataViewTask: Send + Sync {
     fn sync_view(&mut self, node: &dyn DynDataView);
 

@@ -59,6 +59,8 @@ impl<'a> DataViewsManagerBuilder<'a> {
     }
 }
 
+/// Creates, removes and changes data views inside a [DataViewsState] in
+/// response to user interactions.
 pub struct DataViewsManager {
     view_factories: Vec<
         Box<dyn Fn(&NodeOutput, &Pipeline, &Cache, &RenderState) -> Option<Box<dyn DynDataView>>>,
