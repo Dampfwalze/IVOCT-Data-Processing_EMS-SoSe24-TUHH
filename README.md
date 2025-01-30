@@ -1,5 +1,9 @@
 # Node graph based IVOCT data processing application in Rust
 
+Project for module __"Introduction into Medical Technology and Systems"__ at __TUHH__ in the summer semester of 2024.
+
+Analyse IVOCT scans, find their lumen and generate a 3D mesh.
+
 ## Try out this application
 
 If you want to get familiar with this application, see this [application tutorial](doc/tutorial.md).
@@ -11,7 +15,7 @@ See the [Technical Overview](/doc/technical_overview.md).
 ## Download
 
 You can download an application build
-[here](https://collaborating.tuhh.de/cem9903/ems_sose24_ivoct_testing/-/releases/v1.0.0).
+[here](https://github.com/Dampfwalze/IVOCT-Data-Processing_EMS-SoSe24-TUHH/releases/tag/v1.0.0).
 
 ## How to run
 
@@ -25,14 +29,14 @@ may need to restart your terminal to have the changes take effect.
 ### 2. Clone repository
 
 ```
-> git clone https://collaborating.tuhh.de/cem9903/ems_sose24_ivoct_testing.git -b gui-test-rust
-> cd ems_sose24_ivoct_testing
+> git clone https://github.com/Dampfwalze/IVOCT-Data-Processing_EMS-SoSe24-TUHH.git
+> cd IVOCT-Data-Processing_EMS-SoSe24-TUHH
 ```
 
 #### 2.1 Open VS Code (Optional)
 
 ```
-…\ems_sose24_ivoct_testing> code .
+…\IVOCT-Data-Processing_EMS-SoSe24-TUHH> code .
 ```
 
 ##### Install Rust extension
@@ -42,7 +46,7 @@ may need to restart your terminal to have the changes take effect.
 ### 3. Compile and run
 
 ```
-…\ems_sose24_ivoct_testing> cargo run --release
+…\IVOCT-Data-Processing_EMS-SoSe24-TUHH> cargo run --release
 ```
 
 > Note: Compiling the first time may take some time.
