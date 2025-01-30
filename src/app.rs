@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-pub struct IVOCTTestApp {
+pub struct IVOCTApp {
     /// High level pipeline description.
     pipeline: pipeline::Pipeline,
     /// Editing specific information (Where are the nodes placed).
@@ -48,8 +48,8 @@ pub struct IVOCTTestApp {
     load_pipeline: Option<Cow<'static, str>>,
 }
 
-impl IVOCTTestApp {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> IVOCTTestApp {
+impl IVOCTApp {
+    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // Whether and the pipeline the user had open in the last session (JSON)
         let pipeline_json = cc.storage.unwrap().get_string("user_pipeline");
 
@@ -61,7 +61,7 @@ impl IVOCTTestApp {
 
         let (pipeline, state) = Self::load_pipeline(&pipeline_json);
 
-        IVOCTTestApp {
+        IVOCTApp {
             pipeline,
             pipeline_edit_state: state,
             pipeline_executor: pipeline::PipelineExecutor::new(),
@@ -120,7 +120,7 @@ impl IVOCTTestApp {
 
 // MARK: impl App
 
-impl eframe::App for IVOCTTestApp {
+impl eframe::App for IVOCTApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         self.interacted_node = None;
 
@@ -175,7 +175,7 @@ impl eframe::App for IVOCTTestApp {
 
 // MARK: impl TabViewer
 
-impl egui_dock::TabViewer for IVOCTTestApp {
+impl egui_dock::TabViewer for IVOCTApp {
     type Tab = TabType;
 
     fn title(&mut self, tab: &mut Self::Tab) -> egui::WidgetText {
@@ -247,7 +247,7 @@ impl egui_dock::TabViewer for IVOCTTestApp {
 
 // MARK: Pipeline Menu Bar
 
-impl IVOCTTestApp {
+impl IVOCTApp {
     fn pipeline_menu_bar(&mut self, ui: &mut egui::Ui) {
         egui::menu::bar(ui, |ui| {
             ui.menu_button("File", |ui| {

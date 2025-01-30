@@ -50,7 +50,7 @@ async fn main() {
                 ..egui::Style::default()
             });
 
-            Ok(Box::new(IVOCTTestApp::new(cc)))
+            Ok(Box::new(IVOCTApp::new(cc)))
         }),
     )
     .unwrap();
